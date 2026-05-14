@@ -1,65 +1,163 @@
 # codex-pocket
 
-A lightweight mobile viewer/controller for a Codex CLI session running on a Mac.
+A lightweight browser-based viewer/controller for Codex sessions.
 
 ## Goal
 
-See and lightly control a running Codex client from iPhone without mirroring the whole desktop.
+See and lightly control a running Codex session from another browser without mirroring the whole desktop.
 
-## MVP
+## Scope
 
-- Read the latest Codex desktop/CLI session from local Codex state on macOS
-- Expose the session through a small local companion service
-- Show the latest transcript/output on iPhone over HTTP first
-- Add focused controls later:
-  - refresh/live stream
-  - text input
+- **Host:** a desktop machine running Codex with access to its local state under `~/.codex`
+- **Client:** any modern browser
+- **Priority:** mobile-friendly UX first, but not limited to iPhone
+
+> The current prototype was built and tested mainly on macOS, but the UI itself is just a local web app that can be opened from any browser/device that can reach it.
+
+## Current capabilities
+
+- Read recent Codex threads from local Codex state
+- Pick a specific thread from the browser UI
+- Search/filter/sort threads by title, path, source, and project
+- View transcripts in a mobile-friendly, collapsible format
+- Send text input into the selected thread
+- Interrupt the active turn
+- Send quick terminal controls when Codex exposes a live stdin target:
   - Enter
   - Escape
   - Ctrl+C
-  - simple approve/confirm actions
 
-## Proposed architecture
+## Current prototype
 
-### macOS side
+- `npm start`
+- serves on `http://localhost:4782`
+- reads recent Codex threads from `~/.codex/state_5.sqlite`
+- parses linked rollout JSONL files for transcript display
+- uses the Codex app-server bridge for input, interrupt, and terminal control
+- works in any browser, with extra care for narrow/mobile screens
+
+## Quick start
+
+1. Run Codex on the host machine you want to inspect/control.
+2. In this project, start the local companion server:
+
+   ```bash
+   npm start
+   ```
+
+3. Open the UI from a browser:
+   - same machine: `http://localhost:4782`
+   - another device on the same network/VPN: `http://<host-address>:4782`
+4. Pick a thread from the list.
+5. Read the transcript, send input, interrupt, or use quick terminal controls when available.
+
+## Quick mental model
+
+`codex-pocket` has two sides:
+
+1. **Host machine**
+   - runs Codex
+   - has access to `~/.codex`
+   - runs the `codex-pocket` Node server
+2. **Client device**
+   - opens the `codex-pocket` web UI in a browser
+   - can be a phone, tablet, laptop, or another desktop
+
+The client never talks to Codex app-server directly. It only talks to the `codex-pocket` web server.
+
+## Remote access
+
+`codex-pocket` does not depend on Tailscale specifically.
+
+Any setup that lets a browser reach the host machine on the app port can work, for example:
+
+- the same machine via `localhost`
+- another device on the same LAN
+- a VPN-connected device (including Tailscale, WireGuard, ZeroTier, or a company VPN)
+- a reverse-proxied/private internal route
+
+Important detail:
+
+- the browser only needs access to the `codex-pocket` web server port
+- the Codex app-server itself can stay bound to `127.0.0.1` on the host, because `codex-pocket` talks to it locally
+- in the current prototype, the browser-facing port is `4782` by default
+
+In other words: remote browser access can be generalized as "any trusted network path to the host web UI," not "Tailscale only."
+
+## Example access patterns
+
+### 1. Same machine
+
+- run `npm start`
+- open `http://localhost:4782`
+
+### 2. Another device on the same LAN
+
+- run `codex-pocket` on the host desktop
+- find the host's LAN address
+- open `http://<host-lan-ip>:4782` from another browser on the same network
+
+### 3. Remote device over VPN
+
+- connect the client device to the same private network as the host
+- open `http://<host-vpn-ip>:4782`
+- this can be Tailscale, WireGuard, ZeroTier, or another VPN path
+
+## Practical setup notes
+
+- `codex-pocket` should run on the same machine as the Codex state you want to inspect/control
+- the host machine needs local access to `~/.codex`
+- the browser only needs HTTP reachability to the `codex-pocket` port
+- if you expose this beyond localhost, prefer a trusted private network or an authenticated private route
+- the current prototype is optimized for trusted personal/internal use, not hardened public internet exposure
+
+## Architecture
+
+### Host side
 
 - Codex stores thread/session data under `~/.codex`
-- companion service manages:
-  - latest thread discovery from local Codex state
+- a small local companion service handles:
+  - recent thread discovery
   - rollout/transcript parsing
-  - output streaming
-  - later input forwarding
-  - authentication gate
+  - browser API endpoints
+  - event-driven session updates
+  - input/control forwarding to Codex app-server
 
-### iPhone side
+### Client side
 
 Phase 1:
-- mobile web app / PWA
-- terminal-like read view
-- compact input bar
-- quick action buttons
+- responsive web app / PWA-like flow
+- compact thread picker
+- transcript reader
+- input bar + quick controls
 
 Phase 2:
-- dedicated SwiftUI app
+- optional native wrapper/app
 - saved hosts/sessions
 - reconnect logic
-- better typography and controls
+- stronger auth and session management
 
 ## Project structure
 
 - `docs/architecture.md` — system design notes
 - `docs/mvp-plan.md` — practical build order
+- `docs/next-steps.md` — current UX and feature follow-ups
 
-## Next recommendation
+## Current limitations
 
-Start with a web-based MVP first, then wrap or rebuild as a native iPhone app if it proves useful.
+- The current implementation is built around Codex state under `~/.codex`.
+- Read-side transcript rendering still depends on rollout/state parsing rather than a fully semantic Codex thread model.
+- Some controls, like Enter / Esc / Ctrl+C, only work when Codex exposes a live terminal stdin target for that thread.
+- The UI is mobile-friendly, but still a prototype rather than a polished production app.
+- Authentication/access control is not yet hardened for public internet exposure.
 
-## Current prototype
+## Security notes
 
-- `npm start`
-- opens on `http://localhost:4782`
-- reads recent Codex threads from `~/.codex/state_5.sqlite`
-- lets you pick a specific thread from the mobile UI
-- supports client-side search/filter for thread title, path, and source
-- uses a tighter responsive layout for narrow iPhone screens
-- parses the linked rollout JSONL file and renders recent entries in a mobile-friendly page
+- Prefer `localhost`, LAN, VPN, or another trusted private route.
+- Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
+- Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
+- Anyone who can reach the web UI may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
+
+## Recommendation
+
+Keep the browser-based version as the default surface first. If it proves useful, wrap it later as a native mobile app instead of treating iPhone as the only target from day one.
