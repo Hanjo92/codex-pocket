@@ -1,6 +1,6 @@
 {
   "name": "codex-pocket",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Mobile viewer/controller for a Codex CLI session",
   "type": "module",
