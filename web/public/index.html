@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -141,6 +141,13 @@
       .toolbar select.compact-select {
         width: auto;
         min-width: 140px;
+        padding: 9px 12px;
+        font-size: 12px;
+      }
+      .toolbar select.lang-select,
+      .auth-card select.lang-select {
+        width: auto;
+        min-width: 98px;
         padding: 9px 12px;
         font-size: 12px;
       }
@@ -680,40 +687,40 @@
   <body>
     <div class="wrap">
       <div class="sticky-context">
-        <div class="sticky-context-title" id="stickyContextTitle">프로젝트와 스레드를 불러오는 중…</div>
-        <div class="sticky-context-meta" id="stickyContextMeta">선택 상태가 여기에 고정돼 보여.</div>
+        <div class="sticky-context-title" id="stickyContextTitle">Loading projects and threads…</div>
+        <div class="sticky-context-meta" id="stickyContextMeta">Your current selection stays pinned here.</div>
       </div>
       <div class="layout">
         <aside class="card" id="threadPanel">
-          <div class="title">스레드</div>
-          <div class="meta" id="threadListMeta">불러오는 중…</div>
+          <div class="title" id="threadPanelTitle">Threads</div>
+          <div class="meta" id="threadListMeta">Loading…</div>
           <div class="thread-controls">
             <div class="project-filter-head">
-              <div class="meta">프로젝트 먼저 선택</div>
+              <div class="meta" id="projectFilterLead">Pick a project first</div>
               <div class="project-filter-actions">
-                <select id="projectSort" aria-label="프로젝트 정렬">
-                  <option value="recent">최근 활동순</option>
-                  <option value="name-asc">이름순</option>
+                <select id="projectSort" aria-label="Project sort">
+                  <option value="recent">Most recent activity</option>
+                  <option value="name-asc">Name</option>
                 </select>
-                <button type="button" id="toggleProjects" class="secondary">펼치기</button>
+                <button type="button" id="toggleProjects" class="secondary">Expand</button>
               </div>
             </div>
-            <div class="project-chips" id="projectFilter" aria-label="프로젝트 필터"></div>
+            <div class="project-chips" id="projectFilter" aria-label="Project filter"></div>
             <div class="thread-search">
-              <input id="threadSearch" type="search" placeholder="제목, 프로젝트, source 검색" autocomplete="off" />
+              <input id="threadSearch" type="search" placeholder="Search title, project, or source" autocomplete="off" />
             </div>
             <div>
-              <select id="threadSort" aria-label="스레드 정렬">
-                <option value="updated-desc">최신 업데이트순</option>
-                <option value="updated-asc">오래된 업데이트순</option>
-                <option value="title-asc">제목 가나다순</option>
-                <option value="cwd-asc">경로순</option>
+              <select id="threadSort" aria-label="Thread sort">
+                <option value="updated-desc">Most recently updated</option>
+                <option value="updated-asc">Least recently updated</option>
+                <option value="title-asc">Title</option>
+                <option value="cwd-asc">Project</option>
               </select>
             </div>
           </div>
           <div class="thread-summary" id="threadSummary"></div>
           <div class="toolbar">
-            <button id="refreshThreads">목록 새로고침</button>
+            <button id="refreshThreads">Refresh list</button>
           </div>
           <div class="thread-list" id="threadList"></div>
         </aside>
@@ -721,38 +728,42 @@
         <main class="card">
           <div class="title">codex-pocket</div>
           <div class="viewer-head">
-            <div class="viewer-title" id="threadTitle">세션 불러오는 중…</div>
+            <div class="viewer-title" id="threadTitle">Loading session…</div>
             <div class="meta viewer-path" id="threadMeta"></div>
           </div>
           <div class="toolbar viewer-actions">
-            <button id="refresh">현재 스레드 새로고침</button>
-            <button id="expandAll" class="secondary">모두 펼치기</button>
-            <button id="collapseAll" class="secondary">모두 접기</button>
-            <select id="transcriptDensity" class="compact-select" aria-label="중간 과정 표시 방식">
-              <option value="hidden">tool 완전 숨김</option>
-              <option value="notes-only">agent note만 보기</option>
-              <option value="all">tool + agent note 보기</option>
+            <button id="refresh">Refresh current thread</button>
+            <button id="expandAll" class="secondary">Expand all</button>
+            <button id="collapseAll" class="secondary">Collapse all</button>
+            <select id="transcriptDensity" class="compact-select" aria-label="Intermediate detail visibility">
+              <option value="hidden">Hide tools completely</option>
+              <option value="notes-only">Show agent notes only</option>
+              <option value="all">Show tools + agent notes</option>
             </select>
-            <button id="logoutBtn" class="secondary" type="button" style="display:none">로그아웃</button>
+            <select id="langSelect" class="compact-select lang-select" aria-label="Language">
+              <option value="en">English</option>
+              <option value="ko">한국어</option>
+            </select>
+            <button id="logoutBtn" class="secondary" type="button" style="display:none">Log out</button>
           </div>
-          <div class="status muted" id="status">연결 준비 중…</div>
+          <div class="status muted" id="status">Preparing connection…</div>
           <form class="composer" id="inputForm">
-            <textarea id="inputBox" placeholder="선택한 Codex 스레드에 보낼 입력을 적어줘" autocomplete="off"></textarea>
+            <textarea id="inputBox" placeholder="Type input to send to the selected Codex thread" autocomplete="off"></textarea>
             <div class="terminal-state" id="terminalStateCard">
               <div class="terminal-state-row">
-                <div class="terminal-state-badge waiting" id="terminalStateBadge">터미널 입력 대기 중 아님</div>
-                <div class="terminal-state-meta" id="terminalStateMeta">Enter / Esc / Ctrl+C는 stdin 가능한 터미널 작업이 있을 때만 켜져.</div>
+                <div class="terminal-state-badge waiting" id="terminalStateBadge">No terminal input target</div>
+                <div class="terminal-state-meta" id="terminalStateMeta">Enter / Esc / Ctrl+C only turn on when Codex exposes a live stdin-capable terminal task.</div>
               </div>
-              <div class="terminal-state-hint" id="terminalStateHint">지금은 일반 텍스트 턴 전송만 가능해.</div>
+              <div class="terminal-state-hint" id="terminalStateHint">Right now you can only send a normal text turn.</div>
             </div>
             <div class="composer-actions">
-              <div class="muted" id="inputStatus">새 턴으로 전송해. ⌘/Ctrl+Enter로도 보낼 수 있어.</div>
+              <div class="muted" id="inputStatus">Input is sent as a new turn. You can also use ⌘/Ctrl+Enter.</div>
               <div class="composer-button-grid">
                 <button type="button" id="enterBtn" class="secondary">Enter</button>
                 <button type="button" id="escBtn" class="secondary">Esc</button>
                 <button type="button" id="ctrlCBtn" class="secondary">Ctrl+C</button>
-                <button type="button" id="interruptBtn" class="secondary">중단</button>
-                <button type="submit" id="sendInput" class="primary">보내기</button>
+                <button type="button" id="interruptBtn" class="secondary">Interrupt</button>
+                <button type="submit" id="sendInput" class="primary">Send</button>
               </div>
             </div>
           </form>
@@ -762,15 +773,19 @@
     </div>
     <div class="auth-overlay" id="authOverlay" aria-hidden="true">
       <form class="auth-card" id="authForm">
-        <h1>codex-pocket 로그인</h1>
-        <p>이 브라우저에서 Codex 세션을 보려면 이 Mac에서 만든 로컬 계정으로 로그인해야 해.</p>
+        <h1 id="authTitle">Sign in to codex-pocket</h1>
+        <p id="authBody">Use a local account created on this Mac to access Codex sessions from the browser.</p>
         <div class="auth-actions">
-          <input id="authUsernameInput" type="text" placeholder="사용자 이름" autocomplete="username" />
-          <input id="authPasswordInput" type="password" placeholder="비밀번호" autocomplete="current-password" />
+          <input id="authUsernameInput" type="text" placeholder="Username" autocomplete="username" />
+          <input id="authPasswordInput" type="password" placeholder="Password" autocomplete="current-password" />
         </div>
         <div class="auth-error" id="authError"></div>
         <div class="auth-actions">
-          <button type="submit">로그인</button>
+          <select id="authLangSelect" class="lang-select" aria-label="Language">
+            <option value="en">English</option>
+            <option value="ko">한국어</option>
+          </select>
+          <button type="submit" id="authSubmitBtn">Sign in</button>
         </div>
       </form>
     </div>
@@ -785,6 +800,8 @@
       const threadMetaEl = document.getElementById('threadMeta');
       const stickyContextTitleEl = document.getElementById('stickyContextTitle');
       const stickyContextMetaEl = document.getElementById('stickyContextMeta');
+      const threadPanelTitleEl = document.getElementById('threadPanelTitle');
+      const projectFilterLeadEl = document.getElementById('projectFilterLead');
       const threadPanelEl = document.getElementById('threadPanel');
       const threadListEl = document.getElementById('threadList');
       const threadListMetaEl = document.getElementById('threadListMeta');
@@ -804,16 +821,251 @@
       const interruptBtn = document.getElementById('interruptBtn');
       const transcriptDensityEl = document.getElementById('transcriptDensity');
       const logoutBtn = document.getElementById('logoutBtn');
+      const langSelectEl = document.getElementById('langSelect');
+      const authLangSelectEl = document.getElementById('authLangSelect');
       const terminalStateCardEl = document.getElementById('terminalStateCard');
       const terminalStateBadgeEl = document.getElementById('terminalStateBadge');
       const terminalStateMetaEl = document.getElementById('terminalStateMeta');
       const terminalStateHintEl = document.getElementById('terminalStateHint');
       const authOverlayEl = document.getElementById('authOverlay');
       const authFormEl = document.getElementById('authForm');
+      const authTitleEl = document.getElementById('authTitle');
+      const authBodyEl = document.getElementById('authBody');
+      const authSubmitBtn = document.getElementById('authSubmitBtn');
       const authUsernameInputEl = document.getElementById('authUsernameInput');
       const authPasswordInputEl = document.getElementById('authPasswordInput');
       const authErrorEl = document.getElementById('authError');
 
+      const translations = {
+        en: {
+          threadPanelTitle: 'Threads',
+          loadingProjectsAndThreads: 'Loading projects and threads…',
+          stickySelectionHint: 'Your current selection stays pinned here.',
+          loading: 'Loading…',
+          projectFirst: 'Pick a project first',
+          projectSortRecent: 'Most recent activity',
+          projectSortName: 'Name',
+          expand: 'Expand',
+          collapse: 'Collapse',
+          projectFilterAria: 'Project filter',
+          projectSortAria: 'Project sort',
+          threadSearchPlaceholder: 'Search title, project, or source',
+          threadSortAria: 'Thread sort',
+          threadSortUpdatedDesc: 'Most recently updated',
+          threadSortUpdatedAsc: 'Least recently updated',
+          threadSortTitleAsc: 'Title',
+          threadSortProjectAsc: 'Project',
+          refreshList: 'Refresh list',
+          loadingSession: 'Loading session…',
+          refreshCurrentThread: 'Refresh current thread',
+          expandAll: 'Expand all',
+          collapseAll: 'Collapse all',
+          transcriptDensityAria: 'Intermediate detail visibility',
+          transcriptDensityHidden: 'Hide tools completely',
+          transcriptDensityNotesOnly: 'Show agent notes only',
+          transcriptDensityAll: 'Show tools + agent notes',
+          logout: 'Log out',
+          logoutWithUser: 'Log out ({username})',
+          preparingConnection: 'Preparing connection…',
+          inputPlaceholder: 'Type input to send to the selected Codex thread',
+          terminalWaiting: 'No terminal input target',
+          terminalWaitingMeta: 'Enter / Esc / Ctrl+C only turn on when Codex exposes a live stdin-capable terminal task.',
+          terminalTextOnly: 'Right now you can only send a normal text turn.',
+          inputStatusReady: 'Input is sent as a new turn. You can also use ⌘/Ctrl+Enter.',
+          interrupt: 'Interrupt',
+          interruptBusy: 'Interrupting…',
+          send: 'Send',
+          sending: 'Sending…',
+          outputConnecting: 'Connecting…',
+          authTitle: 'Sign in to codex-pocket',
+          authBody: 'Use a local account created on this Mac to access Codex sessions from the browser.',
+          usernamePlaceholder: 'Username',
+          passwordPlaceholder: 'Password',
+          signIn: 'Sign in',
+          loginFailed: 'Sign-in failed',
+          noPath: '(no project label)',
+          allProjects: 'All projects',
+          newBadge: 'new',
+          stickyWaitingThread: 'Waiting for thread selection',
+          stickyProjectActivity: 'new activity {count}',
+          stickyMetaEmpty: 'Your project filter and current selected thread stay visible here.{activity}',
+          terminalReady: 'Terminal input ready',
+          terminalReadyHint: 'Enter / Esc / Ctrl+C are currently wired to the live Codex terminal stdin.',
+          terminalStdinHint: 'stdin hint: {preview}',
+          terminalTurnInput: 'input available for turn {turnId}…',
+          terminalAutoEnable: 'Quick controls will turn on automatically when Codex opens a stdin-capable terminal task.',
+          selectThreadFirst: 'Select a thread first.',
+          totalCount: 'Total {count}',
+          shownCount: 'Shown {count}',
+          sortChip: 'Sort: {label}',
+          projectChip: 'Project: {project}',
+          searchChip: 'Search: {query}',
+          noContent: '[No content to display]',
+          untitledItem: '[No content]',
+          item: 'item',
+          myInput: 'My input',
+          finalAnswer: 'Final answer',
+          autoCollapsed: 'auto-collapsed',
+          showDetails: 'Expand',
+          hideDetails: 'Collapse',
+          noInput: 'No input',
+          answerPending: 'Waiting for answer',
+          noAnswer: '[No answer]',
+          showIntermediate: 'Show intermediate details',
+          showNotesOnly: 'Show agent notes only',
+          hideIntermediate: 'Hide intermediate details',
+          contextLabel: 'context {count}',
+          searchResultsSummary: '{filtered} results / {total} total',
+          threadCountSummary: '{count} threads',
+          noSearchResults: 'No matching threads',
+          untitledThread: 'Untitled thread',
+          unknownSource: 'unknown',
+          updatedPrefix: 'Updated {time}',
+          threadListLoadFailed: 'Failed to load thread list',
+          readingSelectedThread: 'Reading selected Codex thread…',
+          untitledSession: 'Untitled session',
+          recentUpdateStatus: 'Updated {time} · {count} items · {eventState}',
+          eventApplied: 'new event applied',
+          eventWaiting: 'waiting for events',
+          sessionLoadFailed: 'Failed to read session',
+          sessionUnavailable: 'Could not load Codex session',
+          selectThreadToSend: 'Select a thread before sending.',
+          enterTextToSend: 'Enter something to send.',
+          sendingInputToCodex: 'Sending input to Codex…',
+          sentAwaitingTurn: 'Sent · turn {turnId}… · waiting for response event',
+          sentAwaiting: 'Sent · waiting for response event',
+          sendFailed: 'Send failed: {message}',
+          noTerminalProcess: 'There is no process waiting for terminal input right now.',
+          sendingControl: 'Sending {label}…',
+          sentControl: 'Sent {label}.',
+          controlFailed: '{label} failed: {message}',
+          selectThreadToInterrupt: 'Select a thread to interrupt first.',
+          interruptRequestBusy: 'Sending interrupt request for the active turn…',
+          interruptRequested: 'Interrupt request sent. Waiting for status event…',
+          interruptFailed: 'Interrupt failed: {message}',
+          loginRequired: 'Sign-in required.',
+          loginToLoad: 'Sign in to load session contents.',
+          loggedOut: 'Logged out',
+        },
+        ko: {
+          threadPanelTitle: '스레드',
+          loadingProjectsAndThreads: '프로젝트와 스레드를 불러오는 중…',
+          stickySelectionHint: '선택 상태가 여기에 고정돼 보여.',
+          loading: '불러오는 중…',
+          projectFirst: '프로젝트 먼저 선택',
+          projectSortRecent: '최근 활동순',
+          projectSortName: '이름순',
+          expand: '펼치기',
+          collapse: '접기',
+          projectFilterAria: '프로젝트 필터',
+          projectSortAria: '프로젝트 정렬',
+          threadSearchPlaceholder: '제목, 프로젝트, source 검색',
+          threadSortAria: '스레드 정렬',
+          threadSortUpdatedDesc: '최신 업데이트순',
+          threadSortUpdatedAsc: '오래된 업데이트순',
+          threadSortTitleAsc: '제목 가나다순',
+          threadSortProjectAsc: '경로순',
+          refreshList: '목록 새로고침',
+          loadingSession: '세션 불러오는 중…',
+          refreshCurrentThread: '현재 스레드 새로고침',
+          expandAll: '모두 펼치기',
+          collapseAll: '모두 접기',
+          transcriptDensityAria: '중간 과정 표시 방식',
+          transcriptDensityHidden: 'tool 완전 숨김',
+          transcriptDensityNotesOnly: 'agent note만 보기',
+          transcriptDensityAll: 'tool + agent note 보기',
+          logout: '로그아웃',
+          logoutWithUser: '로그아웃 ({username})',
+          preparingConnection: '연결 준비 중…',
+          inputPlaceholder: '선택한 Codex 스레드에 보낼 입력을 적어줘',
+          terminalWaiting: '터미널 입력 대기 중 아님',
+          terminalWaitingMeta: 'Enter / Esc / Ctrl+C는 stdin 가능한 터미널 작업이 있을 때만 켜져.',
+          terminalTextOnly: '지금은 일반 텍스트 턴 전송만 가능해.',
+          inputStatusReady: '새 턴으로 전송해. ⌘/Ctrl+Enter로도 보낼 수 있어.',
+          interrupt: '중단',
+          interruptBusy: '중단 중…',
+          send: '보내기',
+          sending: '보내는 중…',
+          outputConnecting: '연결 중…',
+          authTitle: 'codex-pocket 로그인',
+          authBody: '이 브라우저에서 Codex 세션을 보려면 이 Mac에서 만든 로컬 계정으로 로그인해야 해.',
+          usernamePlaceholder: '사용자 이름',
+          passwordPlaceholder: '비밀번호',
+          signIn: '로그인',
+          loginFailed: '로그인 실패',
+          noPath: '(경로 없음)',
+          allProjects: '전체 프로젝트',
+          newBadge: 'new',
+          stickyWaitingThread: '스레드 선택 대기 중',
+          stickyProjectActivity: '새 활동 {count}',
+          stickyMetaEmpty: '프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.{activity}',
+          terminalReady: '터미널 입력 가능',
+          terminalReadyHint: '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.',
+          terminalStdinHint: 'stdin 힌트: {preview}',
+          terminalTurnInput: 'turn {turnId}… 에 입력 가능',
+          terminalAutoEnable: 'Codex가 stdin 가능한 터미널 작업을 열면 quick control 버튼이 자동으로 켜져.',
+          selectThreadFirst: '먼저 스레드를 선택해줘.',
+          totalCount: '전체 {count}개',
+          shownCount: '표시 {count}개',
+          sortChip: '정렬: {label}',
+          projectChip: '프로젝트: {project}',
+          searchChip: '검색: {query}',
+          noContent: '[표시할 내용 없음]',
+          untitledItem: '[내용 없음]',
+          item: '항목',
+          myInput: '내 입력',
+          finalAnswer: '최종 답변',
+          autoCollapsed: 'auto-collapsed',
+          showDetails: '펼치기',
+          hideDetails: '접기',
+          noInput: '입력 없음',
+          answerPending: '답변 대기 중',
+          noAnswer: '[답변 없음]',
+          showIntermediate: '중간 과정 보기',
+          showNotesOnly: 'agent note만 보기',
+          hideIntermediate: '중간 과정 숨김',
+          contextLabel: 'context {count}',
+          searchResultsSummary: '검색 결과 {filtered}개 / 전체 {total}개',
+          threadCountSummary: '{count}개 스레드',
+          noSearchResults: '검색 결과가 없어',
+          untitledThread: '제목 없는 스레드',
+          unknownSource: 'unknown',
+          updatedPrefix: '업데이트 {time}',
+          threadListLoadFailed: '목록 불러오기 실패',
+          readingSelectedThread: '선택한 Codex 스레드 읽는 중…',
+          untitledSession: '제목 없는 세션',
+          recentUpdateStatus: '최근 업데이트 {time} · 항목 {count}개 · {eventState}',
+          eventApplied: '새 이벤트 반영됨',
+          eventWaiting: '이벤트 대기 중',
+          sessionLoadFailed: '세션 읽기 실패',
+          sessionUnavailable: 'Codex 세션을 불러오지 못했어',
+          selectThreadToSend: '먼저 보낼 스레드를 선택해줘.',
+          enterTextToSend: '보낼 내용을 적어줘.',
+          sendingInputToCodex: 'Codex에 입력 보내는 중…',
+          sentAwaitingTurn: '전송됨 · turn {turnId}… · 응답 이벤트 기다리는 중',
+          sentAwaiting: '전송됨 · 응답 이벤트 기다리는 중',
+          sendFailed: '전송 실패: {message}',
+          noTerminalProcess: '지금은 터미널 입력을 받을 프로세스가 없어.',
+          sendingControl: '{label} 보내는 중…',
+          sentControl: '{label} 보냈어.',
+          controlFailed: '{label} 실패: {message}',
+          selectThreadToInterrupt: '먼저 중단할 스레드를 선택해줘.',
+          interruptRequestBusy: '활성 턴 중단 요청 보내는 중…',
+          interruptRequested: '중단 요청 보냈어. 상태 이벤트 기다리는 중…',
+          interruptFailed: '중단 실패: {message}',
+          loginRequired: '로그인이 필요해.',
+          loginToLoad: '로그인 후 세션 내용을 불러올 수 있어.',
+          loggedOut: '로그아웃됨',
+        },
+      };
+
+      function detectInitialLanguage() {
+        const saved = localStorage.getItem('codex-pocket:lang');
+        if (saved === 'ko' || saved === 'en') return saved;
+        return String(navigator.language || 'en').toLowerCase().startsWith('ko') ? 'ko' : 'en';
+      }
+
+      let currentLang = detectInitialLanguage();
       let sessionEventSource = null;
       let threadRefreshTimer = null;
       let authRequired = false;
@@ -855,9 +1107,112 @@
       const activeTurnIds = new Map();
       let lastQuickControls = { terminal: { available: false } };
 
+      function t(key, vars = {}) {
+        const table = translations[currentLang] || translations.en;
+        const fallback = translations.en[key] || key;
+        const template = table[key] || fallback;
+        return String(template).replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ''));
+      }
+
+      function getLocaleTag() {
+        return currentLang === 'ko' ? 'ko-KR' : 'en-US';
+      }
+
+      function getThreadSortLabel(value = threadSort) {
+        return ({
+          'updated-desc': t('threadSortUpdatedDesc'),
+          'updated-asc': t('threadSortUpdatedAsc'),
+          'title-asc': t('threadSortTitleAsc'),
+          'cwd-asc': t('threadSortProjectAsc'),
+        })[value] || t('threadSortUpdatedDesc');
+      }
+
+      function getTranscriptDensityLabel(value = transcriptDensity) {
+        return ({
+          hidden: t('transcriptDensityHidden'),
+          'notes-only': t('transcriptDensityNotesOnly'),
+          all: t('transcriptDensityAll'),
+        })[value] || t('transcriptDensityHidden');
+      }
+
+      function setOutputLockedMessage() {
+        outputEl.innerHTML = `<div class="empty">${escapeHtml(t('loginToLoad'))}</div>`;
+      }
+
+      function applyStaticTranslations() {
+        document.documentElement.lang = currentLang;
+        stickyContextTitleEl.textContent = t('loadingProjectsAndThreads');
+        stickyContextMetaEl.textContent = t('stickySelectionHint');
+        threadPanelTitleEl.textContent = t('threadPanelTitle');
+        if (!lastThreads.length) {
+          threadListMetaEl.textContent = t('loading');
+        }
+        if (!threadMetaEl.textContent && !selectedThreadId) {
+          threadTitleEl.textContent = t('loadingSession');
+        }
+        projectFilterLeadEl.textContent = t('projectFirst');
+        projectSortEl.setAttribute('aria-label', t('projectSortAria'));
+        projectSortEl.options[0].textContent = t('projectSortRecent');
+        projectSortEl.options[1].textContent = t('projectSortName');
+        projectFilterEl.setAttribute('aria-label', t('projectFilterAria'));
+        threadSearchEl.placeholder = t('threadSearchPlaceholder');
+        threadSortEl.setAttribute('aria-label', t('threadSortAria'));
+        threadSortEl.options[0].textContent = t('threadSortUpdatedDesc');
+        threadSortEl.options[1].textContent = t('threadSortUpdatedAsc');
+        threadSortEl.options[2].textContent = t('threadSortTitleAsc');
+        threadSortEl.options[3].textContent = t('threadSortProjectAsc');
+        refreshThreadsBtn.textContent = t('refreshList');
+        refreshBtn.textContent = t('refreshCurrentThread');
+        expandAllBtn.textContent = t('expandAll');
+        collapseAllBtn.textContent = t('collapseAll');
+        transcriptDensityEl.setAttribute('aria-label', t('transcriptDensityAria'));
+        transcriptDensityEl.options[0].textContent = t('transcriptDensityHidden');
+        transcriptDensityEl.options[1].textContent = t('transcriptDensityNotesOnly');
+        transcriptDensityEl.options[2].textContent = t('transcriptDensityAll');
+        if (!lastThreads.length && !window.__lastOutputText) {
+          statusEl.textContent = t('preparingConnection');
+          outputEl.textContent = t('outputConnecting');
+        }
+        inputBoxEl.placeholder = t('inputPlaceholder');
+        inputStatusEl.textContent = t('inputStatusReady');
+        interruptBtn.textContent = interruptingTurn ? t('interruptBusy') : t('interrupt');
+        sendInputBtn.textContent = sendingInput ? t('sending') : t('send');
+        authTitleEl.textContent = t('authTitle');
+        authBodyEl.textContent = t('authBody');
+        authUsernameInputEl.placeholder = t('usernamePlaceholder');
+        authPasswordInputEl.placeholder = t('passwordPlaceholder');
+        authSubmitBtn.textContent = t('signIn');
+        updateProjectChipsVisibility();
+      }
+
+      function setLanguage(lang, { rerender = true } = {}) {
+        currentLang = lang === 'ko' ? 'ko' : 'en';
+        localStorage.setItem('codex-pocket:lang', currentLang);
+        if (langSelectEl) langSelectEl.value = currentLang;
+        if (authLangSelectEl) authLangSelectEl.value = currentLang;
+        applyStaticTranslations();
+        setAuthUiState(authenticated, authRequired, authenticatedUsername);
+        if (!rerender) return;
+        renderStickyContext(null);
+        if (lastThreads.length) {
+          renderThreadList(lastThreads);
+        }
+        if (window.__lastOutputText) {
+          renderOutputBlocks(window.__lastOutputText || '');
+        } else if (authRequired && !authenticated) {
+          setOutputLockedMessage();
+        }
+        renderTerminalState();
+        updateControlState();
+        if (authRequired && !authenticated) {
+          statusEl.textContent = t('loginRequired');
+          setOutputLockedMessage();
+        }
+      }
+
       function formatDateTime(ms) {
         if (!ms) return '-';
-        return new Date(ms).toLocaleString('ko-KR', { hour12: false });
+        return new Date(ms).toLocaleString(getLocaleTag(), { hour12: false });
       }
 
       function escapeHtml(text) {
@@ -931,7 +1286,7 @@
       }
 
       function getProjectName(thread = {}) {
-        return String(thread.projectLabel || '').trim() || '(경로 없음)';
+        return String(thread.projectLabel || '').trim() || t('noPath');
       }
 
       function getProjectStats(threads = []) {
@@ -969,9 +1324,9 @@
           case 'updated-asc':
             return (a.updatedAtMs || 0) - (b.updatedAtMs || 0);
           case 'title-asc':
-            return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
+            return String(a.title || '').localeCompare(String(b.title || ''), getLocaleTag());
           case 'cwd-asc':
-            return String(a.cwd || '').localeCompare(String(b.cwd || ''), 'ko');
+            return String(a.cwd || '').localeCompare(String(b.cwd || ''), getLocaleTag());
           case 'updated-desc':
           default:
             return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
@@ -1001,7 +1356,7 @@
 
       function updateProjectChipsVisibility() {
         projectFilterEl.classList.toggle('collapsed', projectChipsCollapsed);
-        toggleProjectsBtn.textContent = projectChipsCollapsed ? '펼치기' : '접기';
+        toggleProjectsBtn.textContent = projectChipsCollapsed ? t('expand') : t('collapse');
       }
 
       function closeSessionEventSource() {
@@ -1020,7 +1375,7 @@
         authOverlayEl.classList.toggle('visible', locked);
         authOverlayEl.setAttribute('aria-hidden', locked ? 'false' : 'true');
         logoutBtn.style.display = authRequired ? '' : 'none';
-        logoutBtn.textContent = authenticatedUsername ? `로그아웃 (${authenticatedUsername})` : '로그아웃';
+        logoutBtn.textContent = authenticatedUsername ? t('logoutWithUser', { username: authenticatedUsername }) : t('logout');
         if (locked) {
           setTimeout(() => authUsernameInputEl.focus(), 0);
         }
@@ -1041,7 +1396,7 @@
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data.error || '로그인 실패');
+          throw new Error(data.error || t('loginFailed'));
         }
         authErrorEl.textContent = '';
         setAuthUiState(data.authenticated, data.authRequired, data.username || '');
@@ -1105,9 +1460,9 @@
         const stats = getProjectStats(threads);
         const sortedProjects = [...stats].sort((a, b) => {
           if (projectSort === 'name-asc') {
-            return a.name.localeCompare(b.name, 'ko');
+            return a.name.localeCompare(b.name, getLocaleTag());
           }
-          return (b.updatedAtMs || 0) - (a.updatedAtMs || 0) || a.name.localeCompare(b.name, 'ko');
+          return (b.updatedAtMs || 0) - (a.updatedAtMs || 0) || a.name.localeCompare(b.name, getLocaleTag());
         });
         const names = sortedProjects.map((project) => project.name);
 
@@ -1116,7 +1471,7 @@
           localStorage.removeItem('codex-pocket:project-filter');
         }
 
-        const chips = [{ value: '', label: '전체 프로젝트', unreadCount: 0 }]
+        const chips = [{ value: '', label: t('allProjects'), unreadCount: 0 }]
           .concat(sortedProjects.map((project) => ({ value: project.name, label: `${project.name} · ${project.count}`, unreadCount: project.unreadCount })));
 
         projectFilterEl.innerHTML = chips.map((chip) => `
@@ -1126,7 +1481,7 @@
             data-project-filter="${escapeHtml(chip.value)}"
           >
             <span>${escapeHtml(chip.label)}</span>
-            ${chip.unreadCount ? `<span class="project-chip-activity">${chip.unreadCount} new</span>` : ''}
+            ${chip.unreadCount ? `<span class="project-chip-activity">${chip.unreadCount} ${escapeHtml(t('newBadge'))}</span>` : ''}
           </button>
         `).join('');
 
@@ -1196,34 +1551,34 @@
 
       function renderStickyContext(thread = null) {
         const activeThread = thread || lastThreads.find((item) => item.id === selectedThreadId) || null;
-        const activeProject = activeThread ? getProjectName(activeThread) : (projectFilter || '전체 프로젝트');
+        const activeProject = activeThread ? getProjectName(activeThread) : (projectFilter || t('allProjects'));
         const projectStats = getProjectStats(lastThreads).find((item) => item.name === activeProject);
-        const projectActivity = projectStats?.unreadCount ? ` · 새 활동 ${projectStats.unreadCount}` : '';
+        const projectActivity = projectStats?.unreadCount ? ` · ${t('stickyProjectActivity', { count: projectStats.unreadCount })}` : '';
         stickyContextTitleEl.textContent = activeThread
-          ? `${activeProject} · ${activeThread.title || '제목 없는 스레드'}`
-          : `${activeProject} · 스레드 선택 대기 중`;
+          ? `${activeProject} · ${activeThread.title || t('untitledThread')}`
+          : `${activeProject} · ${t('stickyWaitingThread')}`;
         stickyContextMetaEl.textContent = activeThread
-          ? `${activeThread.source || 'unknown'}${projectActivity}`
-          : `프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.${projectActivity}`;
+          ? `${activeThread.source || t('unknownSource')}${projectActivity}`
+          : t('stickyMetaEmpty', { activity: projectActivity });
       }
 
       function renderTerminalState() {
         const terminal = lastQuickControls?.terminal || { available: false };
         const ready = !!terminal.available;
-        terminalStateBadgeEl.textContent = ready ? '터미널 입력 가능' : '터미널 입력 대기 중 아님';
+        terminalStateBadgeEl.textContent = ready ? t('terminalReady') : t('terminalWaiting');
         terminalStateBadgeEl.className = `terminal-state-badge ${ready ? 'ready' : 'waiting'}`;
 
         if (ready) {
-          terminalStateHintEl.textContent = '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.';
+          terminalStateHintEl.textContent = t('terminalReadyHint');
           terminalStateMetaEl.textContent = terminal.stdinPreview
-            ? `stdin 힌트: ${terminal.stdinPreview}`
-            : `turn ${String(terminal.turnId || '').slice(0, 8)}… 에 입력 가능`;
+            ? t('terminalStdinHint', { preview: terminal.stdinPreview })
+            : t('terminalTurnInput', { turnId: String(terminal.turnId || '').slice(0, 8) });
           terminalStateCardEl.style.borderColor = 'rgba(34, 197, 94, 0.35)';
         } else {
-          terminalStateHintEl.textContent = '지금은 일반 텍스트 턴 전송만 가능해.';
+          terminalStateHintEl.textContent = t('terminalTextOnly');
           terminalStateMetaEl.textContent = selectedThreadId
-            ? 'Codex가 stdin 가능한 터미널 작업을 열면 quick control 버튼이 자동으로 켜져.'
-            : '먼저 스레드를 선택해줘.';
+            ? t('terminalAutoEnable')
+            : t('selectThreadFirst');
           terminalStateCardEl.style.borderColor = 'var(--line)';
         }
       }
@@ -1237,8 +1592,8 @@
         enterBtn.disabled = busy || !terminalAvailable;
         escBtn.disabled = busy || !terminalAvailable;
         ctrlCBtn.disabled = busy || !terminalAvailable;
-        sendInputBtn.textContent = sendingInput ? '보내는 중…' : '보내기';
-        interruptBtn.textContent = interruptingTurn ? '중단 중…' : '중단';
+        sendInputBtn.textContent = sendingInput ? t('sending') : t('send');
+        interruptBtn.textContent = interruptingTurn ? t('interruptBusy') : t('interrupt');
         renderTerminalState();
       }
 
@@ -1259,22 +1614,17 @@
       }
 
       function renderThreadSummary(total, filtered) {
-        const sortLabel = ({
-          'updated-desc': '최신 업데이트순',
-          'updated-asc': '오래된 업데이트순',
-          'title-asc': '제목 가나다순',
-          'cwd-asc': '경로순',
-        })[threadSort] || '최신 업데이트순';
+        const sortLabel = getThreadSortLabel(threadSort);
         const items = [
-          `<span class="chip">전체 ${total}개</span>`,
-          `<span class="chip">표시 ${filtered}개</span>`,
-          `<span class="chip">정렬: ${escapeHtml(sortLabel)}</span>`,
+          `<span class="chip">${escapeHtml(t('totalCount', { count: total }))}</span>`,
+          `<span class="chip">${escapeHtml(t('shownCount', { count: filtered }))}</span>`,
+          `<span class="chip">${escapeHtml(t('sortChip', { label: sortLabel }))}</span>`,
         ];
         if (projectFilter) {
-          items.push(`<span class="chip">프로젝트: ${escapeHtml(projectFilter)}</span>`);
+          items.push(`<span class="chip">${escapeHtml(t('projectChip', { project: projectFilter }))}</span>`);
         }
         if (threadQuery.trim()) {
-          items.push(`<span class="chip">검색: ${escapeHtml(threadQuery.trim())}</span>`);
+          items.push(`<span class="chip">${escapeHtml(t('searchChip', { query: threadQuery.trim() }))}</span>`);
         }
         threadSummaryEl.innerHTML = items.join('');
       }
@@ -1294,7 +1644,7 @@
         return lines.slice(1).join('\n').trim();
       }
 
-      function summarizeText(text = '', fallback = '[내용 없음]') {
+      function summarizeText(text = '', fallback = t('untitledItem')) {
         const flat = String(text).replace(/\s+/g, ' ').trim();
         if (!flat) return fallback;
         return flat.length > 220 ? `${flat.slice(0, 220)}…` : flat;
@@ -1302,7 +1652,7 @@
 
       function summarizeBlock(text = '') {
         const lines = String(text).split('\n').filter(Boolean);
-        const header = lines[0] || '항목';
+        const header = lines[0] || t('item');
         const body = getBlockBody(text);
         const classification = classifyBlock(text);
         return {
@@ -1367,7 +1717,7 @@
         if (block.classification.kind === 'developer') return '';
         const badges = [
           `<span class="output-badge ${block.classification.kind}">${escapeHtml(block.classification.label)}</span>`,
-          block.classification.lowSignal ? '<span class="output-badge low-signal">auto-collapsed</span>' : '',
+          block.classification.lowSignal ? `<span class="output-badge low-signal">${escapeHtml(t('autoCollapsed'))}</span>` : '',
         ].filter(Boolean).join('');
         return `
           <details class="output-block"${isOpen ? ' open' : ''}>
@@ -1375,9 +1725,9 @@
               <div>
                 <div class="output-summary-badges">${badges}</div>
                 <div class="output-summary-title">${escapeHtml(block.preview)}</div>
-                <div class="output-summary-preview">${escapeHtml(block.classification.kind === 'user' ? '내 입력' : block.classification.kind === 'assistant' ? '최종 답변' : block.header)}</div>
+                <div class="output-summary-preview">${escapeHtml(block.classification.kind === 'user' ? t('myInput') : block.classification.kind === 'assistant' ? t('finalAnswer') : block.header)}</div>
               </div>
-              <div class="output-summary-toggle">${isOpen ? '접기' : '펼치기'}</div>
+              <div class="output-summary-toggle">${isOpen ? t('hideDetails') : t('showDetails')}</div>
             </summary>
             <div class="output-body">
               <pre>${escapeHtml(block.body || block.text)}</pre>
@@ -1410,27 +1760,27 @@
           return shouldShowLowSignalBlock(block);
         });
         const badges = [
-          primaryUserBlock ? '<span class="output-badge user">내 입력</span>' : '',
-          finalAssistantBlock ? '<span class="output-badge assistant">최종 답변</span>' : '',
+          primaryUserBlock ? `<span class="output-badge user">${escapeHtml(t('myInput'))}</span>` : '',
+          finalAssistantBlock ? `<span class="output-badge assistant">${escapeHtml(t('finalAnswer'))}</span>` : '',
           toolCount ? `<span class="output-badge low-signal">⚙ ${toolCount}</span>` : '',
           noteCount ? `<span class="output-badge low-signal">📝 ${noteCount}</span>` : '',
-          contextCount ? `<span class="output-badge low-signal">context ${contextCount}</span>` : '',
+          contextCount ? `<span class="output-badge low-signal">${escapeHtml(t('contextLabel', { count: contextCount }))}</span>` : '',
         ].filter(Boolean).join('');
-        const title = primaryUserBlock?.preview || '입력 없음';
-        const preview = finalAssistantBlock?.preview || '답변 대기 중';
+        const title = primaryUserBlock?.preview || t('noInput');
+        const preview = finalAssistantBlock?.preview || t('answerPending');
         const visibleBody = [
           primaryUserBlock ? `
             <div class="turn-block">
-              <div class="output-summary-badges"><span class="output-badge user">내 입력</span></div>
-              <div class="output-summary-title">${escapeHtml(summarizeText(primaryUserBlock.body, '입력 없음'))}</div>
-              <pre>${escapeHtml(primaryUserBlock.body || '[입력 없음]')}</pre>
+              <div class="output-summary-badges"><span class="output-badge user">${escapeHtml(t('myInput'))}</span></div>
+              <div class="output-summary-title">${escapeHtml(summarizeText(primaryUserBlock.body, t('noInput')))}</div>
+              <pre>${escapeHtml(primaryUserBlock.body || `[${t('noInput')}]`)}</pre>
             </div>
           ` : '',
           finalAssistantBlock ? `
             <div class="turn-block">
-              <div class="output-summary-badges"><span class="output-badge assistant">최종 답변</span></div>
-              <div class="output-summary-title">${escapeHtml(summarizeText(finalAssistantBlock.body, '답변 대기 중'))}</div>
-              <pre>${escapeHtml(finalAssistantBlock.body || '[답변 없음]')}</pre>
+              <div class="output-summary-badges"><span class="output-badge assistant">${escapeHtml(t('finalAnswer'))}</span></div>
+              <div class="output-summary-title">${escapeHtml(summarizeText(finalAssistantBlock.body, t('answerPending')))}</div>
+              <pre>${escapeHtml(finalAssistantBlock.body || t('noAnswer'))}</pre>
             </div>
           ` : '',
         ].filter(Boolean).join('');
@@ -1447,10 +1797,10 @@
           `;
         }).join('');
         const lowSignalLabel = transcriptDensity === 'all'
-          ? '중간 과정 보기'
+          ? t('showIntermediate')
           : transcriptDensity === 'notes-only'
-            ? 'agent note만 보기'
-            : '중간 과정 숨김';
+            ? t('showNotesOnly')
+            : t('hideIntermediate');
         const lowSignalSection = shownHiddenBlocks.length ? `
           <details class="turn-low-signal">
             <summary class="turn-low-signal-summary">
@@ -1469,7 +1819,7 @@
                 <div class="output-summary-title">${escapeHtml(title)}</div>
                 <div class="output-summary-preview">${escapeHtml(preview)}</div>
               </div>
-              <div class="output-summary-toggle">${isOpen ? '접기' : '펼치기'}</div>
+              <div class="output-summary-toggle">${isOpen ? t('hideDetails') : t('showDetails')}</div>
             </summary>
             <div class="turn-body">${visibleBody}${lowSignalSection}</div>
           </details>
@@ -1480,7 +1830,7 @@
         const blocks = splitOutputBlocks(text);
         const groups = groupOutputBlocks(blocks);
         if (!groups.length) {
-          outputEl.innerHTML = '<div class="empty">[표시할 내용 없음]</div>';
+          outputEl.innerHTML = `<div class="empty">${escapeHtml(t('noContent'))}</div>`;
           return;
         }
 
@@ -1494,7 +1844,7 @@
         for (const details of outputEl.querySelectorAll('details.output-turn, details.output-block')) {
           const toggleEl = details.querySelector('.output-summary-toggle');
           details.addEventListener('toggle', () => {
-            toggleEl.textContent = details.open ? '접기' : '펼치기';
+            toggleEl.textContent = details.open ? t('hideDetails') : t('showDetails');
           });
         }
       }
@@ -1513,8 +1863,8 @@
         const isShortThreadList = filteredThreads.length <= 3;
         threadListEl.classList.toggle('is-short', isShortThreadList);
         threadListMetaEl.textContent = threadQuery.trim()
-          ? `검색 결과 ${filteredThreads.length}개 / 전체 ${threads.length}개`
-          : `${threads.length}개 스레드`;
+          ? t('searchResultsSummary', { filtered: filteredThreads.length, total: threads.length })
+          : t('threadCountSummary', { count: threads.length });
         renderThreadSummary(threads.length, filteredThreads.length);
 
         if (selectedThreadId && !threads.some((thread) => thread.id === selectedThreadId)) {
@@ -1522,14 +1872,14 @@
         }
 
         if (!filteredThreads.length) {
-          threadListEl.innerHTML = '<div class="empty">검색 결과가 없어</div>';
+          threadListEl.innerHTML = `<div class="empty">${escapeHtml(t('noSearchResults'))}</div>`;
           return;
         }
 
         threadListEl.innerHTML = filteredThreads.map((thread, index) => {
           const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
           const hasNew = isThreadNew(thread);
-          const fullTitle = thread.title || '제목 없는 스레드';
+          const fullTitle = thread.title || t('untitledThread');
           const fullPath = getProjectName(thread);
           const compactTitle = shortenMiddle(fullTitle, 56);
           const compactPath = shortenMiddle(fullPath, 44);
@@ -1538,12 +1888,12 @@
               <div class="thread-item-head">
                 <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
                 <div class="thread-item-badges">
-                  ${hasNew ? '<span class="thread-badge-new">new</span>' : ''}
+                  ${hasNew ? `<span class="thread-badge-new">${escapeHtml(t('newBadge'))}</span>` : ''}
                 </div>
               </div>
-              <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || 'unknown')}</div>
+              <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
               <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
-              <div class="thread-item-meta">업데이트 ${escapeHtml(formatDateTime(thread.updatedAtMs))}</div>
+              <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
             </button>
           `;
         }).join('');
@@ -1573,7 +1923,7 @@
             renderThreadList(data.threads || []);
           }
         } catch (error) {
-          threadListMetaEl.textContent = '목록 불러오기 실패';
+          threadListMetaEl.textContent = t('threadListLoadFailed');
           threadSummaryEl.innerHTML = '';
           threadListEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
         }
@@ -1605,7 +1955,7 @@
 
       async function loadSession({ silent = false } = {}) {
         if (!silent) {
-          statusEl.textContent = '선택한 Codex 스레드 읽는 중…';
+          statusEl.textContent = t('readingSelectedThread');
         }
         try {
           const params = new URLSearchParams();
@@ -1634,19 +1984,23 @@
           if (nextThreadsSignature !== previousThreadsSignature || selectedChanged || viewStateChanged) {
             renderThreadList(incomingThreads);
           }
-          threadTitleEl.textContent = thread.title || '제목 없는 세션';
-          threadMetaEl.textContent = `${thread.source || 'unknown'} · ${getProjectName(thread)}`;
+          threadTitleEl.textContent = thread.title || t('untitledSession');
+          threadMetaEl.textContent = `${thread.source || t('unknownSource')} · ${getProjectName(thread)}`;
           renderStickyContext(thread);
           const changed = thread.updatedAtMs && thread.updatedAtMs !== lastSessionUpdatedAt;
           lastSessionUpdatedAt = thread.updatedAtMs || lastSessionUpdatedAt;
           lastQuickControls = data.quickControls || { terminal: { available: false } };
-          statusEl.textContent = `최근 업데이트 ${formatDateTime(thread.updatedAtMs)} · 항목 ${data.entryCount || 0}개 · ${changed ? '새 이벤트 반영됨' : '이벤트 대기 중'}`;
+          statusEl.textContent = t('recentUpdateStatus', {
+            time: formatDateTime(thread.updatedAtMs),
+            count: data.entryCount || 0,
+            eventState: changed ? t('eventApplied') : t('eventWaiting'),
+          });
           window.__lastOutputText = data.output || '';
           renderOutputBlocks(window.__lastOutputText);
           updateControlState();
         } catch (error) {
-          statusEl.textContent = '세션 읽기 실패';
-          threadTitleEl.textContent = 'Codex 세션을 불러오지 못했어';
+          statusEl.textContent = t('sessionLoadFailed');
+          threadTitleEl.textContent = t('sessionUnavailable');
           threadMetaEl.textContent = '';
           renderStickyContext(null);
           outputEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
@@ -1656,16 +2010,16 @@
       async function sendInput() {
         const text = inputBoxEl.value.trim();
         if (!selectedThreadId) {
-          inputStatusEl.textContent = '먼저 보낼 스레드를 선택해줘.';
+          inputStatusEl.textContent = t('selectThreadToSend');
           return;
         }
         if (!text) {
-          inputStatusEl.textContent = '보낼 내용을 적어줘.';
+          inputStatusEl.textContent = t('enterTextToSend');
           inputBoxEl.focus();
           return;
         }
 
-        setInputBusy(true, 'Codex에 입력 보내는 중…');
+        setInputBusy(true, t('sendingInputToCodex'));
         try {
           const response = await apiFetch('/api/input', {
             method: 'POST',
@@ -1682,11 +2036,11 @@
           }
           inputBoxEl.value = '';
           inputStatusEl.textContent = data.turnId
-            ? `전송됨 · turn ${data.turnId.slice(0, 8)}… · 응답 이벤트 기다리는 중`
-            : '전송됨 · 응답 이벤트 기다리는 중';
+            ? t('sentAwaitingTurn', { turnId: data.turnId.slice(0, 8) })
+            : t('sentAwaiting');
           await loadSession({ silent: true });
         } catch (error) {
-          inputStatusEl.textContent = `전송 실패: ${error.message}`;
+          inputStatusEl.textContent = t('sendFailed', { message: error.message });
         } finally {
           setInputBusy(false);
         }
@@ -1694,17 +2048,17 @@
 
       async function sendTerminalControl(action, label) {
         if (!selectedThreadId) {
-          inputStatusEl.textContent = '먼저 스레드를 선택해줘.';
+          inputStatusEl.textContent = t('selectThreadFirst');
           return;
         }
         if (!lastQuickControls?.terminal?.available) {
-          inputStatusEl.textContent = '지금은 터미널 입력을 받을 프로세스가 없어.';
+          inputStatusEl.textContent = t('noTerminalProcess');
           return;
         }
 
         sendingTerminalControl = true;
         updateControlState();
-        inputStatusEl.textContent = `${label} 보내는 중…`;
+        inputStatusEl.textContent = t('sendingControl', { label });
         try {
           const response = await apiFetch('/api/terminal-control', {
             method: 'POST',
@@ -1720,10 +2074,10 @@
             throw new Error(data.error || 'Terminal control request failed');
           }
 
-          inputStatusEl.textContent = `${label} 보냈어.`;
+          inputStatusEl.textContent = t('sentControl', { label });
           await loadSession({ silent: true });
         } catch (error) {
-          inputStatusEl.textContent = `${label} 실패: ${error.message}`;
+          inputStatusEl.textContent = t('controlFailed', { label, message: error.message });
         } finally {
           sendingTerminalControl = false;
           updateControlState();
@@ -1732,11 +2086,11 @@
 
       async function interruptTurn() {
         if (!selectedThreadId) {
-          inputStatusEl.textContent = '먼저 중단할 스레드를 선택해줘.';
+          inputStatusEl.textContent = t('selectThreadToInterrupt');
           return;
         }
 
-        setInterruptBusy(true, '활성 턴 중단 요청 보내는 중…');
+        setInterruptBusy(true, t('interruptRequestBusy'));
         try {
           const response = await apiFetch('/api/interrupt', {
             method: 'POST',
@@ -1749,10 +2103,10 @@
           }
 
           activeTurnIds.delete(selectedThreadId);
-          inputStatusEl.textContent = '중단 요청 보냈어. 상태 이벤트 기다리는 중…';
+          inputStatusEl.textContent = t('interruptRequested');
           await loadSession({ silent: true });
         } catch (error) {
-          inputStatusEl.textContent = `중단 실패: ${error.message}`;
+          inputStatusEl.textContent = t('interruptFailed', { message: error.message });
         } finally {
           setInterruptBusy(false);
         }
@@ -1779,8 +2133,8 @@
         renderStickyContext(null);
         const session = await refreshAuthSession();
         if (session.authRequired && !session.authenticated) {
-          statusEl.textContent = '로그인이 필요해.';
-          outputEl.innerHTML = '<div class="empty">로그인 후 세션 내용을 불러올 수 있어.</div>';
+          statusEl.textContent = t('loginRequired');
+          setOutputLockedMessage();
           return;
         }
         await loadThreads();
@@ -1818,6 +2172,14 @@
         renderThreadList(lastThreads);
       });
 
+      langSelectEl.addEventListener('change', (event) => {
+        setLanguage(event.target.value);
+      });
+
+      authLangSelectEl.addEventListener('change', (event) => {
+        setLanguage(event.target.value);
+      });
+
       authFormEl.addEventListener('submit', async (event) => {
         event.preventDefault();
         authErrorEl.textContent = '';
@@ -1836,8 +2198,8 @@
       logoutBtn.addEventListener('click', async () => {
         await logoutSession();
         stopRefreshLoops();
-        outputEl.innerHTML = '<div class="empty">로그인 후 세션 내용을 불러올 수 있어.</div>';
-        statusEl.textContent = '로그아웃됨';
+        setOutputLockedMessage();
+        statusEl.textContent = t('loggedOut');
       });
 
       transcriptDensityEl.addEventListener('change', () => {
@@ -1917,6 +2279,7 @@
       });
 
       installTouchScrollGuard(threadListEl);
+      setLanguage(currentLang, { rerender: false });
       updateControlState();
       boot();
       window.addEventListener('beforeunload', () => {

@@ -2,6 +2,8 @@
 
 A lightweight browser-based viewer/controller for Codex sessions.
 
+`codex-pocket` gives you a focused remote browser surface for Codex: pick a thread, read the transcript, send short input, interrupt a turn, and use a few safe quick controls without remoting an entire desktop.
+
 ## Goal
 
 See and lightly control a running Codex session from another browser without mirroring the whole desktop.
@@ -20,6 +22,7 @@ See and lightly control a running Codex session from another browser without mir
 - Pick a specific thread from the browser UI
 - Search/filter/sort threads by title, source, and project label
 - View transcripts in a mobile-friendly, collapsible format
+- Switch the browser UI between Korean and English, with browser-language detection and a saved preference
 - Show a cleaner browser-facing thread/session model without exposing host absolute paths in normal API payloads
 - Send text input into the selected thread
 - Interrupt the active turn
@@ -41,8 +44,30 @@ See and lightly control a running Codex session from another browser without mir
 - uses the Codex app-server bridge for input, interrupt, and terminal control
 - supports a login-screen + HTTP-only cookie auth flow when one or more local users exist in `run/users.json`
 - works in any browser, with extra care for narrow/mobile screens
+- supports a small built-in ko/en UI language toggle with browser-language detection
 
 ## Quick start
+
+### Smallest useful flow
+
+1. Run Codex on the host machine you want to inspect/control.
+2. Start `codex-pocket`:
+
+   ```bash
+   npm start
+   ```
+
+3. Optional but recommended for anything beyond pure localhost use: create a browser login user:
+
+   ```bash
+   npm run user:add -- <username>
+   ```
+
+4. Open `http://localhost:4782` (or `http://<host-address>:4782` from another trusted device).
+5. If prompted, sign in, choose a thread, and use the UI.
+6. If you prefer, switch the UI language from the toolbar or the login screen.
+
+### More detailed startup notes
 
 1. Run Codex on the host machine you want to inspect/control.
 2. In this project, start the local companion server:
@@ -140,8 +165,10 @@ In other words: remote browser access can be generalized as "any trusted network
 - `codex-pocket` should run on the same machine as the Codex state you want to inspect/control
 - the host machine needs local access to `~/.codex`
 - the browser only needs HTTP reachability to the `codex-pocket` port
+- for remote use, think "private reachability to this one web port," not "expose the whole Codex runtime"
 - if you expose this beyond localhost, prefer a trusted private network or an authenticated private route
 - the current prototype is optimized for trusted personal/internal use, not hardened public internet exposure
+- the UI can be localized per browser session, but the underlying data model and APIs stay the same
 
 ## Local process/account commands
 
@@ -285,8 +312,8 @@ Phase 2:
 
 ## Security notes
 
-- Prefer `localhost`, LAN, VPN, or another trusted private route.
-- Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
+- Prefer `localhost`, LAN, VPN, Tailscale, or another trusted private route.
+- Do **not** expose this prototype directly to the public internet without adding stronger auth, TLS, and operational hardening.
 - Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
 - The safer default bind host is `127.0.0.1`; use `CODEX_POCKET_HOST=0.0.0.0` or another explicit address only when you intentionally want remote reachability.
 - Create at least one local browser login user before opening access beyond localhost. The browser UI uses a login screen and stores the authenticated session in an HTTP-only cookie.
