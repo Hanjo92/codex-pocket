@@ -1,0 +1,11 @@
+{
+  "name": "codex-pocket",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile viewer/controller for a Codex CLI session",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  }
+}

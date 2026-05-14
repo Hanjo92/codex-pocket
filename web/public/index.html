@@ -1,0 +1,1776 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>codex-pocket</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b1020;
+        --panel: #121933;
+        --panel-2: #0f1630;
+        --text: #e7ecff;
+        --muted: #91a0d8;
+        --accent: #74c0fc;
+        --line: rgba(255, 255, 255, 0.08);
+        --chip: rgba(116, 192, 252, 0.12);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+      }
+      body {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--bg);
+        color: var(--text);
+        -webkit-text-size-adjust: 100%;
+      }
+      .wrap {
+        width: min(100%, 1180px);
+        margin: 0 auto;
+        padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)) 12px;
+      }
+      .sticky-context {
+        position: sticky;
+        top: max(8px, env(safe-area-inset-top));
+        z-index: 20;
+        margin-bottom: 12px;
+        background: rgba(11, 16, 32, 0.88);
+        backdrop-filter: blur(12px);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 10px 12px;
+      }
+      .sticky-context-title {
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.45;
+      }
+      .sticky-context-meta {
+        margin-top: 4px;
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+      }
+      .card {
+        background: var(--panel);
+        border-radius: 16px;
+        padding: 14px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+        min-width: 0;
+      }
+      #threadPanel {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overscroll-behavior: contain;
+      }
+      .title {
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .meta, .muted {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+      .toolbar select.compact-select {
+        width: auto;
+        min-width: 140px;
+        padding: 9px 12px;
+        font-size: 12px;
+      }
+      button {
+        appearance: none;
+        -webkit-appearance: none;
+        background: var(--accent);
+        color: #08111f;
+        border: 0;
+        border-radius: 999px;
+        padding: 10px 14px;
+        font-weight: 700;
+        font-size: 13px;
+        line-height: 1.35;
+        cursor: pointer;
+        min-height: 40px;
+        white-space: normal;
+      }
+      input[type="search"],
+      select,
+      textarea {
+        width: 100%;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        font-size: 14px;
+        outline: none;
+      }
+      input[type="search"]:focus,
+      select:focus,
+      textarea:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(116, 192, 252, 0.15);
+      }
+      .thread-controls {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .status {
+        margin: 10px 0 14px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      .thread-search {
+        margin-top: 12px;
+      }
+      .thread-summary {
+        margin-top: 8px;
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 8px;
+        border-radius: 999px;
+        background: var(--chip);
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .project-filter-head {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      .project-filter-head select {
+        width: auto;
+        min-width: 120px;
+        padding: 9px 12px;
+        font-size: 12px;
+      }
+      .project-filter-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .project-filter-actions button.secondary {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      .project-chips {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .project-chips.collapsed {
+        display: none;
+      }
+      .project-chip {
+        appearance: none;
+        -webkit-appearance: none;
+        width: auto;
+        min-height: 36px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel-2);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .project-chip.active {
+        background: var(--accent);
+        color: #08111f;
+        border-color: transparent;
+      }
+      .project-chip-activity {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: rgba(250, 204, 21, 0.16);
+        color: #fde68a;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .project-chip.active .project-chip-activity {
+        background: rgba(8, 17, 31, 0.16);
+        color: #08111f;
+      }
+      .thread-list {
+        margin-top: 14px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: min(72vh, 900px);
+        overflow-x: hidden;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y pinch-zoom;
+        scrollbar-gutter: stable;
+        padding-right: 2px;
+      }
+      .thread-item {
+        display: grid;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        text-align: left;
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid transparent;
+        border-radius: 12px;
+        padding: 12px;
+        overflow: hidden;
+        gap: 4px;
+        align-content: start;
+        touch-action: pan-y;
+      }
+      .thread-item.active {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(116, 192, 252, 0.25);
+      }
+      .thread-item-title {
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+        margin-bottom: 0;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .thread-item-meta {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.4;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .thread-item-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: flex-start;
+        gap: 8px;
+        min-width: 0;
+      }
+      .thread-item-head > * {
+        min-width: 0;
+      }
+      .thread-item-badges {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+        justify-self: end;
+      }
+      .thread-badge-new {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgba(250, 204, 21, 0.16);
+        color: #fde68a;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .thread-item-meta.path {
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .viewer-head {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+      }
+      .viewer-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .viewer-actions button.secondary {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      .viewer-title {
+        font-size: 15px;
+        font-weight: 700;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .viewer-path {
+        word-break: break-word;
+      }
+      .composer {
+        margin: 12px 0 14px;
+        display: grid;
+        gap: 8px;
+      }
+      .composer textarea {
+        min-height: 96px;
+        resize: vertical;
+      }
+      .composer-actions {
+        display: grid;
+        gap: 8px;
+      }
+      .composer-actions .muted {
+        min-width: 0;
+      }
+      .composer-button-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .composer-button-grid button.secondary {
+        background: var(--panel-2);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+      .composer-button-grid .primary {
+        grid-column: span 2;
+      }
+      .terminal-state {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 10px 12px;
+        display: grid;
+        gap: 6px;
+      }
+      .terminal-state-row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .terminal-state-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 11px;
+        font-weight: 700;
+        background: rgba(255,255,255,0.06);
+        color: var(--muted);
+      }
+      .terminal-state-badge.ready {
+        background: rgba(34, 197, 94, 0.16);
+        color: #9ae6b4;
+      }
+      .terminal-state-badge.waiting {
+        background: rgba(250, 204, 21, 0.14);
+        color: #fde68a;
+      }
+      .terminal-state-hint {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .terminal-state-meta {
+        font-size: 11px;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      .output-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 52vh;
+        min-width: 0;
+      }
+      details.output-turn,
+      details.output-block {
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      details.output-turn[open],
+      details.output-block[open] {
+        border-color: rgba(116, 192, 252, 0.35);
+      }
+      .output-summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .output-summary::-webkit-details-marker {
+        display: none;
+      }
+      .output-summary-title {
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .output-summary-badges {
+        display: inline-flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 4px;
+      }
+      .output-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .output-badge.user { background: rgba(96, 165, 250, 0.18); color: #93c5fd; }
+      .output-badge.assistant { background: rgba(74, 222, 128, 0.16); color: #86efac; }
+      .output-badge.agent-note { background: rgba(250, 204, 21, 0.16); color: #fde68a; }
+      .output-badge.tool { background: rgba(244, 114, 182, 0.16); color: #f9a8d4; }
+      .output-badge.low-signal { background: rgba(255,255,255,0.08); color: var(--muted); }
+      .output-summary-preview {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.45;
+        margin-top: 4px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .output-summary-toggle {
+        color: var(--muted);
+        font-size: 11px;
+        flex: 0 0 auto;
+        padding-top: 1px;
+      }
+      .output-body {
+        border-top: 1px solid var(--line);
+        padding: 12px;
+      }
+      .turn-body {
+        border-top: 1px solid var(--line);
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .turn-block {
+        border: 1px solid rgba(255,255,255,0.06);
+        border-radius: 10px;
+        padding: 10px;
+      }
+      .turn-block.low-signal {
+        opacity: 0.9;
+      }
+      details.turn-low-signal {
+        border: 1px dashed rgba(255,255,255,0.12);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      .turn-low-signal-summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .turn-low-signal-summary::-webkit-details-marker {
+        display: none;
+      }
+      .turn-low-signal-body {
+        border-top: 1px solid rgba(255,255,255,0.08);
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .turn-block pre,
+      .output-body pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.5;
+        margin: 0;
+        font-size: 12px;
+      }
+      .empty {
+        color: var(--muted);
+        font-size: 13px;
+        padding: 12px 0;
+      }
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .thread-list {
+          max-height: 34vh;
+          min-height: 0;
+        }
+        .thread-list.is-short {
+          max-height: none;
+          overflow: visible;
+        }
+        .output-list {
+          min-height: 44vh;
+        }
+      }
+      @media (max-width: 640px) {
+        .wrap {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+        .card {
+          padding: 12px;
+          border-radius: 14px;
+        }
+        .title {
+          font-size: 16px;
+        }
+        .viewer-title {
+          font-size: 14px;
+        }
+        .toolbar {
+          flex-direction: column;
+          align-items: stretch;
+        }
+        button {
+          width: 100%;
+        }
+        .thread-item {
+          padding: 11px;
+        }
+        .thread-item-title {
+          font-size: 12px;
+        }
+        .thread-item-meta {
+          font-size: 10px;
+        }
+        .thread-list {
+          max-height: 34vh;
+          min-height: 0;
+        }
+        .thread-list.is-short {
+          max-height: none;
+          overflow: visible;
+        }
+        .output-list {
+          min-height: 40vh;
+        }
+        .composer-button-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .composer-button-grid .primary {
+          grid-column: span 2;
+        }
+        .output-summary {
+          padding: 10px;
+          gap: 8px;
+        }
+        .output-summary-title {
+          font-size: 11px;
+        }
+        .output-summary-preview,
+        .output-summary-toggle,
+        .output-body pre {
+          font-size: 10px;
+          line-height: 1.45;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="sticky-context">
+        <div class="sticky-context-title" id="stickyContextTitle">프로젝트와 스레드를 불러오는 중…</div>
+        <div class="sticky-context-meta" id="stickyContextMeta">선택 상태가 여기에 고정돼 보여.</div>
+      </div>
+      <div class="layout">
+        <aside class="card" id="threadPanel">
+          <div class="title">스레드</div>
+          <div class="meta" id="threadListMeta">불러오는 중…</div>
+          <div class="thread-controls">
+            <div class="project-filter-head">
+              <div class="meta">프로젝트 먼저 선택</div>
+              <div class="project-filter-actions">
+                <select id="projectSort" aria-label="프로젝트 정렬">
+                  <option value="recent">최근 활동순</option>
+                  <option value="name-asc">이름순</option>
+                </select>
+                <button type="button" id="toggleProjects" class="secondary">펼치기</button>
+              </div>
+            </div>
+            <div class="project-chips" id="projectFilter" aria-label="프로젝트 필터"></div>
+            <div class="thread-search">
+              <input id="threadSearch" type="search" placeholder="제목, 경로, source 검색" autocomplete="off" />
+            </div>
+            <div>
+              <select id="threadSort" aria-label="스레드 정렬">
+                <option value="updated-desc">최신 업데이트순</option>
+                <option value="updated-asc">오래된 업데이트순</option>
+                <option value="title-asc">제목 가나다순</option>
+                <option value="cwd-asc">경로순</option>
+              </select>
+            </div>
+          </div>
+          <div class="thread-summary" id="threadSummary"></div>
+          <div class="toolbar">
+            <button id="refreshThreads">목록 새로고침</button>
+          </div>
+          <div class="thread-list" id="threadList"></div>
+        </aside>
+
+        <main class="card">
+          <div class="title">codex-pocket</div>
+          <div class="viewer-head">
+            <div class="viewer-title" id="threadTitle">세션 불러오는 중…</div>
+            <div class="meta viewer-path" id="threadMeta"></div>
+          </div>
+          <div class="toolbar viewer-actions">
+            <button id="refresh">현재 스레드 새로고침</button>
+            <button id="expandAll" class="secondary">모두 펼치기</button>
+            <button id="collapseAll" class="secondary">모두 접기</button>
+            <select id="transcriptDensity" class="compact-select" aria-label="중간 과정 표시 방식">
+              <option value="hidden">tool 완전 숨김</option>
+              <option value="notes-only">agent note만 보기</option>
+              <option value="all">tool + agent note 보기</option>
+            </select>
+          </div>
+          <div class="status muted" id="status">연결 준비 중…</div>
+          <form class="composer" id="inputForm">
+            <textarea id="inputBox" placeholder="선택한 Codex 스레드에 보낼 입력을 적어줘" autocomplete="off"></textarea>
+            <div class="terminal-state" id="terminalStateCard">
+              <div class="terminal-state-row">
+                <div class="terminal-state-badge waiting" id="terminalStateBadge">터미널 입력 대기 중 아님</div>
+                <div class="terminal-state-meta" id="terminalStateMeta">Enter / Esc / Ctrl+C는 stdin 가능한 터미널 작업이 있을 때만 켜져.</div>
+              </div>
+              <div class="terminal-state-hint" id="terminalStateHint">지금은 일반 텍스트 턴 전송만 가능해.</div>
+            </div>
+            <div class="composer-actions">
+              <div class="muted" id="inputStatus">새 턴으로 전송해. ⌘/Ctrl+Enter로도 보낼 수 있어.</div>
+              <div class="composer-button-grid">
+                <button type="button" id="enterBtn" class="secondary">Enter</button>
+                <button type="button" id="escBtn" class="secondary">Esc</button>
+                <button type="button" id="ctrlCBtn" class="secondary">Ctrl+C</button>
+                <button type="button" id="interruptBtn" class="secondary">중단</button>
+                <button type="submit" id="sendInput" class="primary">보내기</button>
+              </div>
+            </div>
+          </form>
+          <div class="output-list" id="output">Connecting…</div>
+        </main>
+      </div>
+    </div>
+    <script>
+      const statusEl = document.getElementById('status');
+      const outputEl = document.getElementById('output');
+      const refreshBtn = document.getElementById('refresh');
+      const refreshThreadsBtn = document.getElementById('refreshThreads');
+      const expandAllBtn = document.getElementById('expandAll');
+      const collapseAllBtn = document.getElementById('collapseAll');
+      const threadTitleEl = document.getElementById('threadTitle');
+      const threadMetaEl = document.getElementById('threadMeta');
+      const stickyContextTitleEl = document.getElementById('stickyContextTitle');
+      const stickyContextMetaEl = document.getElementById('stickyContextMeta');
+      const threadPanelEl = document.getElementById('threadPanel');
+      const threadListEl = document.getElementById('threadList');
+      const threadListMetaEl = document.getElementById('threadListMeta');
+      const threadSearchEl = document.getElementById('threadSearch');
+      const threadSummaryEl = document.getElementById('threadSummary');
+      const threadSortEl = document.getElementById('threadSort');
+      const projectSortEl = document.getElementById('projectSort');
+      const projectFilterEl = document.getElementById('projectFilter');
+      const toggleProjectsBtn = document.getElementById('toggleProjects');
+      const inputFormEl = document.getElementById('inputForm');
+      const inputBoxEl = document.getElementById('inputBox');
+      const inputStatusEl = document.getElementById('inputStatus');
+      const sendInputBtn = document.getElementById('sendInput');
+      const enterBtn = document.getElementById('enterBtn');
+      const escBtn = document.getElementById('escBtn');
+      const ctrlCBtn = document.getElementById('ctrlCBtn');
+      const interruptBtn = document.getElementById('interruptBtn');
+      const transcriptDensityEl = document.getElementById('transcriptDensity');
+      const terminalStateCardEl = document.getElementById('terminalStateCard');
+      const terminalStateBadgeEl = document.getElementById('terminalStateBadge');
+      const terminalStateMetaEl = document.getElementById('terminalStateMeta');
+      const terminalStateHintEl = document.getElementById('terminalStateHint');
+
+      let sessionEventSource = null;
+      let threadRefreshTimer = null;
+      let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
+      let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
+      let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
+      let projectSort = localStorage.getItem('codex-pocket:project-sort') || 'recent';
+      let projectFilter = localStorage.getItem('codex-pocket:project-filter') || '';
+      let transcriptDensity = localStorage.getItem('codex-pocket:transcript-density') || 'hidden';
+      let projectChipsCollapsed = localStorage.getItem('codex-pocket:project-chips-collapsed') !== 'false';
+      let projectViewedAt = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('codex-pocket:project-viewed-at') || '{}');
+        } catch {
+          return {};
+        }
+      })();
+      let threadViewedAt = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('codex-pocket:thread-viewed-at') || '{}');
+        } catch {
+          return {};
+        }
+      })();
+      let projectThreadMemory = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('codex-pocket:project-thread-memory') || '{}');
+        } catch {
+          return {};
+        }
+      })();
+      let lastThreads = [];
+      let lastSessionUpdatedAt = 0;
+      let sendingInput = false;
+      let interruptingTurn = false;
+      let sendingTerminalControl = false;
+      const activeTurnIds = new Map();
+      let lastQuickControls = { terminal: { available: false } };
+
+      function formatDateTime(ms) {
+        if (!ms) return '-';
+        return new Date(ms).toLocaleString('ko-KR', { hour12: false });
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function rememberProjectView(projectName, updatedAtMs = Date.now()) {
+        if (!projectName) return false;
+        const nextValue = Math.max(Number(projectViewedAt[projectName] || 0), Number(updatedAtMs || 0));
+        if (nextValue === Number(projectViewedAt[projectName] || 0)) return false;
+        projectViewedAt[projectName] = nextValue;
+        localStorage.setItem('codex-pocket:project-viewed-at', JSON.stringify(projectViewedAt));
+        return true;
+      }
+
+      function rememberThreadView(threadId, updatedAtMs = Date.now()) {
+        if (!threadId) return false;
+        const nextValue = Math.max(Number(threadViewedAt[threadId] || 0), Number(updatedAtMs || 0));
+        if (nextValue === Number(threadViewedAt[threadId] || 0)) return false;
+        threadViewedAt[threadId] = nextValue;
+        localStorage.setItem('codex-pocket:thread-viewed-at', JSON.stringify(threadViewedAt));
+        return true;
+      }
+
+      function rememberProjectThread(threadId, projectName = projectFilter) {
+        if (!projectName) return;
+        if (!threadId) {
+          delete projectThreadMemory[projectName];
+        } else {
+          projectThreadMemory[projectName] = threadId;
+        }
+        localStorage.setItem('codex-pocket:project-thread-memory', JSON.stringify(projectThreadMemory));
+      }
+
+      function getRememberedProjectThread(projectName = projectFilter) {
+        return projectName ? projectThreadMemory[projectName] || '' : '';
+      }
+
+      function setSelectedThread(threadId) {
+        const previousThreadId = selectedThreadId;
+        selectedThreadId = threadId || '';
+        if (selectedThreadId) {
+          localStorage.setItem('codex-pocket:selected-thread', selectedThreadId);
+          const selectedThread = lastThreads.find((thread) => thread.id === selectedThreadId);
+          if (selectedThread) {
+            rememberProjectThread(selectedThreadId, getProjectName(selectedThread));
+          } else if (projectFilter) {
+            rememberProjectThread(selectedThreadId, projectFilter);
+          }
+        } else {
+          localStorage.removeItem('codex-pocket:selected-thread');
+        }
+        if (previousThreadId !== selectedThreadId) {
+          connectSessionEvents();
+        }
+        updateControlState();
+      }
+
+      function setThreadQuery(value) {
+        threadQuery = value || '';
+        if (threadQuery) {
+          localStorage.setItem('codex-pocket:thread-query', threadQuery);
+        } else {
+          localStorage.removeItem('codex-pocket:thread-query');
+        }
+      }
+
+      function getProjectName(thread = {}) {
+        const cwd = String(thread.cwd || '').replace(/\/$/, '');
+        if (!cwd) return '(경로 없음)';
+        const parts = cwd.split('/').filter(Boolean);
+        return parts[parts.length - 1] || cwd;
+      }
+
+      function getProjectStats(threads = []) {
+        const map = new Map();
+        for (const thread of threads) {
+          const name = getProjectName(thread);
+          const current = map.get(name) || { name, count: 0, updatedAtMs: 0, unreadCount: 0 };
+          const updatedAtMs = thread.updatedAtMs || 0;
+          current.count += 1;
+          current.updatedAtMs = Math.max(current.updatedAtMs, updatedAtMs);
+          const viewedAt = Number(projectViewedAt[name] || 0);
+          if (updatedAtMs > viewedAt) {
+            current.unreadCount += 1;
+          }
+          map.set(name, current);
+        }
+        return [...map.values()];
+      }
+
+      function isThreadNew(thread = {}) {
+        const updatedAtMs = Number(thread.updatedAtMs || 0);
+        const viewedAt = Number(threadViewedAt[thread.id] || 0);
+        return updatedAtMs > viewedAt;
+      }
+
+      function normalizedThreadSearch(thread) {
+        return [thread.title, thread.cwd, thread.source, getProjectName(thread)]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+      }
+
+      function compareThreads(a, b) {
+        switch (threadSort) {
+          case 'updated-asc':
+            return (a.updatedAtMs || 0) - (b.updatedAtMs || 0);
+          case 'title-asc':
+            return String(a.title || '').localeCompare(String(b.title || ''), 'ko');
+          case 'cwd-asc':
+            return String(a.cwd || '').localeCompare(String(b.cwd || ''), 'ko');
+          case 'updated-desc':
+          default:
+            return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
+        }
+      }
+
+      function getFilteredThreads(threads = []) {
+        const q = threadQuery.trim().toLowerCase();
+        const filteredByProject = projectFilter
+          ? threads.filter((thread) => getProjectName(thread) === projectFilter)
+          : [...threads];
+        const filtered = !q
+          ? filteredByProject
+          : filteredByProject.filter((thread) => normalizedThreadSearch(thread).includes(q));
+        return filtered.sort(compareThreads);
+      }
+
+      function getThreadsSignature(threads = []) {
+        return threads.map((thread) => [
+          thread.id || '',
+          thread.updatedAtMs || 0,
+          thread.title || '',
+          thread.cwd || '',
+          thread.source || '',
+        ].join('|')).join('\n');
+      }
+
+      function updateProjectChipsVisibility() {
+        projectFilterEl.classList.toggle('collapsed', projectChipsCollapsed);
+        toggleProjectsBtn.textContent = projectChipsCollapsed ? '펼치기' : '접기';
+      }
+
+      function closeSessionEventSource() {
+        if (sessionEventSource) {
+          sessionEventSource.close();
+          sessionEventSource = null;
+        }
+      }
+
+      function installTouchScrollGuard(el) {
+        if (!el || el.dataset.touchScrollGuardInstalled === 'true') return;
+        let startY = 0;
+
+        el.addEventListener('touchstart', (event) => {
+          if (!event.touches.length) return;
+          startY = event.touches[0].clientY;
+        }, { passive: true });
+
+        el.addEventListener('touchmove', (event) => {
+          if (!event.touches.length) return;
+          const currentY = event.touches[0].clientY;
+          const deltaY = currentY - startY;
+          const atTop = el.scrollTop <= 0;
+          const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+          const canScroll = el.scrollHeight > el.clientHeight + 1;
+
+          if (!canScroll) return;
+
+          const pullingDownAtTop = atTop && deltaY > 0;
+          const pushingUpAtBottom = atBottom && deltaY < 0;
+
+          if (pullingDownAtTop || pushingUpAtBottom) return;
+
+          event.stopPropagation();
+        }, { passive: true });
+
+        el.addEventListener('wheel', (event) => {
+          event.stopPropagation();
+        }, { passive: true });
+
+        el.dataset.touchScrollGuardInstalled = 'true';
+      }
+
+      function renderProjectFilter(threads = []) {
+        const stats = getProjectStats(threads);
+        const sortedProjects = [...stats].sort((a, b) => {
+          if (projectSort === 'name-asc') {
+            return a.name.localeCompare(b.name, 'ko');
+          }
+          return (b.updatedAtMs || 0) - (a.updatedAtMs || 0) || a.name.localeCompare(b.name, 'ko');
+        });
+        const names = sortedProjects.map((project) => project.name);
+
+        if (projectFilter && !names.includes(projectFilter)) {
+          projectFilter = '';
+          localStorage.removeItem('codex-pocket:project-filter');
+        }
+
+        const chips = [{ value: '', label: '전체 프로젝트', unreadCount: 0 }]
+          .concat(sortedProjects.map((project) => ({ value: project.name, label: `${project.name} · ${project.count}`, unreadCount: project.unreadCount })));
+
+        projectFilterEl.innerHTML = chips.map((chip) => `
+          <button
+            type="button"
+            class="project-chip ${chip.value === projectFilter ? 'active' : ''}"
+            data-project-filter="${escapeHtml(chip.value)}"
+          >
+            <span>${escapeHtml(chip.label)}</span>
+            ${chip.unreadCount ? `<span class="project-chip-activity">${chip.unreadCount} new</span>` : ''}
+          </button>
+        `).join('');
+
+        for (const button of projectFilterEl.querySelectorAll('[data-project-filter]')) {
+          button.addEventListener('click', async () => {
+            const value = button.dataset.projectFilter || '';
+            if (value === projectFilter) return;
+            setProjectFilter(value);
+            renderThreadList(lastThreads);
+            const filteredThreads = getFilteredThreads(lastThreads);
+            const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+            if (nextThreadId && nextThreadId !== selectedThreadId) {
+              setSelectedThread(nextThreadId);
+              renderThreadList(lastThreads);
+              await loadSession();
+            }
+          });
+        }
+
+        for (const rememberedProject of Object.keys(projectThreadMemory)) {
+          if (!names.includes(rememberedProject)) {
+            delete projectThreadMemory[rememberedProject];
+          }
+        }
+        localStorage.setItem('codex-pocket:project-thread-memory', JSON.stringify(projectThreadMemory));
+        updateProjectChipsVisibility();
+      }
+
+      function setProjectFilter(value) {
+        projectFilter = value || '';
+        if (projectFilter) {
+          localStorage.setItem('codex-pocket:project-filter', projectFilter);
+          const matching = lastThreads.filter((thread) => getProjectName(thread) === projectFilter);
+          const latest = matching.reduce((max, thread) => Math.max(max, thread.updatedAtMs || 0), 0);
+          rememberProjectView(projectFilter, latest || Date.now());
+        } else {
+          localStorage.removeItem('codex-pocket:project-filter');
+        }
+      }
+
+      function chooseThreadForCurrentProject(filteredThreads = []) {
+        if (!filteredThreads.length) return '';
+        const rememberedThreadId = getRememberedProjectThread(projectFilter);
+        if (rememberedThreadId && filteredThreads.some((thread) => thread.id === rememberedThreadId)) {
+          return rememberedThreadId;
+        }
+        if (selectedThreadId && filteredThreads.some((thread) => thread.id === selectedThreadId)) {
+          return selectedThreadId;
+        }
+        return filteredThreads[0].id;
+      }
+
+      function setThreadSort(value) {
+        threadSort = value || 'updated-desc';
+        localStorage.setItem('codex-pocket:thread-sort', threadSort);
+      }
+
+      function setProjectSort(value) {
+        projectSort = value || 'recent';
+        localStorage.setItem('codex-pocket:project-sort', projectSort);
+      }
+
+      function setProjectChipsCollapsed(value) {
+        projectChipsCollapsed = !!value;
+        localStorage.setItem('codex-pocket:project-chips-collapsed', String(projectChipsCollapsed));
+      }
+
+      function renderStickyContext(thread = null) {
+        const activeThread = thread || lastThreads.find((item) => item.id === selectedThreadId) || null;
+        const activeProject = activeThread ? getProjectName(activeThread) : (projectFilter || '전체 프로젝트');
+        const projectStats = getProjectStats(lastThreads).find((item) => item.name === activeProject);
+        const projectActivity = projectStats?.unreadCount ? ` · 새 활동 ${projectStats.unreadCount}` : '';
+        stickyContextTitleEl.textContent = activeThread
+          ? `${activeProject} · ${activeThread.title || '제목 없는 스레드'}`
+          : `${activeProject} · 스레드 선택 대기 중`;
+        stickyContextMetaEl.textContent = activeThread
+          ? `${activeThread.source || 'unknown'} · ${activeThread.cwd || ''}${projectActivity}`
+          : `프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.${projectActivity}`;
+      }
+
+      function renderTerminalState() {
+        const terminal = lastQuickControls?.terminal || { available: false };
+        const ready = !!terminal.available;
+        terminalStateBadgeEl.textContent = ready ? '터미널 입력 가능' : '터미널 입력 대기 중 아님';
+        terminalStateBadgeEl.className = `terminal-state-badge ${ready ? 'ready' : 'waiting'}`;
+
+        if (ready) {
+          terminalStateHintEl.textContent = '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.';
+          terminalStateMetaEl.textContent = terminal.stdinPreview
+            ? `stdin 힌트: ${terminal.stdinPreview}`
+            : `turn ${String(terminal.turnId || '').slice(0, 8)}… 에 입력 가능`;
+          terminalStateCardEl.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+        } else {
+          terminalStateHintEl.textContent = '지금은 일반 텍스트 턴 전송만 가능해.';
+          terminalStateMetaEl.textContent = selectedThreadId
+            ? 'Codex가 stdin 가능한 터미널 작업을 열면 quick control 버튼이 자동으로 켜져.'
+            : '먼저 스레드를 선택해줘.';
+          terminalStateCardEl.style.borderColor = 'var(--line)';
+        }
+      }
+
+      function updateControlState() {
+        const busy = sendingInput || interruptingTurn || sendingTerminalControl;
+        const terminalAvailable = !!lastQuickControls?.terminal?.available;
+        inputBoxEl.disabled = sendingInput;
+        sendInputBtn.disabled = busy;
+        interruptBtn.disabled = busy || !selectedThreadId;
+        enterBtn.disabled = busy || !terminalAvailable;
+        escBtn.disabled = busy || !terminalAvailable;
+        ctrlCBtn.disabled = busy || !terminalAvailable;
+        sendInputBtn.textContent = sendingInput ? '보내는 중…' : '보내기';
+        interruptBtn.textContent = interruptingTurn ? '중단 중…' : '중단';
+        renderTerminalState();
+      }
+
+      function setInputBusy(busy, message = '') {
+        sendingInput = busy;
+        updateControlState();
+        if (message) {
+          inputStatusEl.textContent = message;
+        }
+      }
+
+      function setInterruptBusy(busy, message = '') {
+        interruptingTurn = busy;
+        updateControlState();
+        if (message) {
+          inputStatusEl.textContent = message;
+        }
+      }
+
+      function renderThreadSummary(total, filtered) {
+        const sortLabel = ({
+          'updated-desc': '최신 업데이트순',
+          'updated-asc': '오래된 업데이트순',
+          'title-asc': '제목 가나다순',
+          'cwd-asc': '경로순',
+        })[threadSort] || '최신 업데이트순';
+        const items = [
+          `<span class="chip">전체 ${total}개</span>`,
+          `<span class="chip">표시 ${filtered}개</span>`,
+          `<span class="chip">정렬: ${escapeHtml(sortLabel)}</span>`,
+        ];
+        if (projectFilter) {
+          items.push(`<span class="chip">프로젝트: ${escapeHtml(projectFilter)}</span>`);
+        }
+        if (threadQuery.trim()) {
+          items.push(`<span class="chip">검색: ${escapeHtml(threadQuery.trim())}</span>`);
+        }
+        threadSummaryEl.innerHTML = items.join('');
+      }
+
+      function classifyBlock(text = '') {
+        const firstLine = String(text).split('\n').find(Boolean) || '';
+        if (/\] developer$/i.test(firstLine)) return { kind: 'developer', label: 'developer', lowSignal: true };
+        if (/\] agent note$/i.test(firstLine)) return { kind: 'agent-note', label: 'agent note', lowSignal: true };
+        if (/\] tool output$/i.test(firstLine) || /\] tool call$/i.test(firstLine)) return { kind: 'tool', label: 'tool', lowSignal: true };
+        if (/\] assistant$/i.test(firstLine)) return { kind: 'assistant', label: 'assistant', lowSignal: false };
+        if (/\] user$/i.test(firstLine)) return { kind: 'user', label: 'user', lowSignal: false };
+        return { kind: 'other', label: 'event', lowSignal: false };
+      }
+
+      function getBlockBody(text = '') {
+        const lines = String(text).split('\n');
+        return lines.slice(1).join('\n').trim();
+      }
+
+      function summarizeText(text = '', fallback = '[내용 없음]') {
+        const flat = String(text).replace(/\s+/g, ' ').trim();
+        if (!flat) return fallback;
+        return flat.length > 220 ? `${flat.slice(0, 220)}…` : flat;
+      }
+
+      function summarizeBlock(text = '') {
+        const lines = String(text).split('\n').filter(Boolean);
+        const header = lines[0] || '항목';
+        const body = getBlockBody(text);
+        const classification = classifyBlock(text);
+        return {
+          header,
+          body,
+          preview: summarizeText(body),
+          classification,
+          text,
+        };
+      }
+
+      function splitOutputBlocks(text = '') {
+        return String(text)
+          .split(/\n\n(?=\[\d{2}:\d{2}:\d{2}\])/)
+          .map((block) => block.trim())
+          .filter(Boolean)
+          .map((block) => summarizeBlock(block));
+      }
+
+      function groupOutputBlocks(blocks = []) {
+        const groups = [];
+        let currentTurn = null;
+
+        for (const block of blocks) {
+          if (block.classification.kind === 'user') {
+            if (!currentTurn) {
+              currentTurn = { type: 'turn', blocks: [block] };
+              continue;
+            }
+
+            const onlyUserBlocks = currentTurn.blocks.every((item) => item.classification.kind === 'user');
+            if (onlyUserBlocks) {
+              currentTurn.blocks.push(block);
+              continue;
+            }
+
+            groups.push(currentTurn);
+            currentTurn = { type: 'turn', blocks: [block] };
+            continue;
+          }
+
+          if (currentTurn) {
+            currentTurn.blocks.push(block);
+            continue;
+          }
+
+          groups.push({ type: 'single', block });
+        }
+
+        if (currentTurn) groups.push(currentTurn);
+        return groups;
+      }
+
+      function shouldOpenGroup(group, index, total) {
+        if (group.type === 'turn') {
+          return index >= Math.max(0, total - 1);
+        }
+        return !group.block.classification.lowSignal && index >= Math.max(0, total - 2);
+      }
+
+      function renderSingleBlock(block, isOpen) {
+        if (block.classification.kind === 'developer') return '';
+        const badges = [
+          `<span class="output-badge ${block.classification.kind}">${escapeHtml(block.classification.label)}</span>`,
+          block.classification.lowSignal ? '<span class="output-badge low-signal">auto-collapsed</span>' : '',
+        ].filter(Boolean).join('');
+        return `
+          <details class="output-block"${isOpen ? ' open' : ''}>
+            <summary class="output-summary">
+              <div>
+                <div class="output-summary-badges">${badges}</div>
+                <div class="output-summary-title">${escapeHtml(block.preview)}</div>
+                <div class="output-summary-preview">${escapeHtml(block.classification.kind === 'user' ? '내 입력' : block.classification.kind === 'assistant' ? '최종 답변' : block.header)}</div>
+              </div>
+              <div class="output-summary-toggle">${isOpen ? '접기' : '펼치기'}</div>
+            </summary>
+            <div class="output-body">
+              <pre>${escapeHtml(block.body || block.text)}</pre>
+            </div>
+          </details>
+        `;
+      }
+
+      function shouldShowLowSignalBlock(block) {
+        if (transcriptDensity === 'all') return true;
+        if (transcriptDensity === 'notes-only') {
+          return block.classification.kind === 'agent-note';
+        }
+        return false;
+      }
+
+      function renderTurnGroup(group, isOpen) {
+        const userBlocks = group.blocks.filter((block) => block.classification.kind === 'user');
+        const assistantBlocks = group.blocks.filter((block) => block.classification.kind === 'assistant');
+        const primaryUserBlock = userBlocks[userBlocks.length - 1] || null;
+        const finalAssistantBlock = assistantBlocks[assistantBlocks.length - 1] || null;
+        const toolCount = group.blocks.filter((block) => block.classification.kind === 'tool').length;
+        const noteCount = group.blocks.filter((block) => block.classification.kind === 'agent-note').length;
+        const contextCount = group.blocks.filter((block) => block.classification.kind === 'developer').length + Math.max(0, userBlocks.length - (primaryUserBlock ? 1 : 0));
+        const hiddenBlocks = group.blocks.filter((block) => block !== primaryUserBlock && block !== finalAssistantBlock);
+        const shownHiddenBlocks = hiddenBlocks.filter((block) => {
+          if (block.classification.kind === 'developer') return false;
+          if (block.classification.kind === 'user') return false;
+          if (block.classification.kind === 'assistant') return false;
+          return shouldShowLowSignalBlock(block);
+        });
+        const badges = [
+          primaryUserBlock ? '<span class="output-badge user">내 입력</span>' : '',
+          finalAssistantBlock ? '<span class="output-badge assistant">최종 답변</span>' : '',
+          toolCount ? `<span class="output-badge low-signal">⚙ ${toolCount}</span>` : '',
+          noteCount ? `<span class="output-badge low-signal">📝 ${noteCount}</span>` : '',
+          contextCount ? `<span class="output-badge low-signal">context ${contextCount}</span>` : '',
+        ].filter(Boolean).join('');
+        const title = primaryUserBlock?.preview || '입력 없음';
+        const preview = finalAssistantBlock?.preview || '답변 대기 중';
+        const visibleBody = [
+          primaryUserBlock ? `
+            <div class="turn-block">
+              <div class="output-summary-badges"><span class="output-badge user">내 입력</span></div>
+              <div class="output-summary-title">${escapeHtml(summarizeText(primaryUserBlock.body, '입력 없음'))}</div>
+              <pre>${escapeHtml(primaryUserBlock.body || '[입력 없음]')}</pre>
+            </div>
+          ` : '',
+          finalAssistantBlock ? `
+            <div class="turn-block">
+              <div class="output-summary-badges"><span class="output-badge assistant">최종 답변</span></div>
+              <div class="output-summary-title">${escapeHtml(summarizeText(finalAssistantBlock.body, '답변 대기 중'))}</div>
+              <pre>${escapeHtml(finalAssistantBlock.body || '[답변 없음]')}</pre>
+            </div>
+          ` : '',
+        ].filter(Boolean).join('');
+        const lowSignalBody = shownHiddenBlocks.map((block) => {
+          const blockBadges = [
+            `<span class="output-badge ${block.classification.kind}">${escapeHtml(block.classification.label)}</span>`,
+          ].join('');
+          return `
+            <div class="turn-block low-signal">
+              <div class="output-summary-badges">${blockBadges}</div>
+              <div class="output-summary-title">${escapeHtml(block.preview)}</div>
+              <pre>${escapeHtml(block.body || block.text)}</pre>
+            </div>
+          `;
+        }).join('');
+        const lowSignalLabel = transcriptDensity === 'all'
+          ? '중간 과정 보기'
+          : transcriptDensity === 'notes-only'
+            ? 'agent note만 보기'
+            : '중간 과정 숨김';
+        const lowSignalSection = shownHiddenBlocks.length ? `
+          <details class="turn-low-signal">
+            <summary class="turn-low-signal-summary">
+              <span>${lowSignalLabel}</span>
+              <span>${toolCount ? `⚙ ${toolCount}` : ''}${toolCount && noteCount ? ' · ' : ''}${noteCount ? `📝 ${noteCount}` : ''}</span>
+            </summary>
+            <div class="turn-low-signal-body">${lowSignalBody}</div>
+          </details>
+        ` : '';
+
+        return `
+          <details class="output-turn"${isOpen ? ' open' : ''}>
+            <summary class="output-summary">
+              <div>
+                <div class="output-summary-badges">${badges}</div>
+                <div class="output-summary-title">${escapeHtml(title)}</div>
+                <div class="output-summary-preview">${escapeHtml(preview)}</div>
+              </div>
+              <div class="output-summary-toggle">${isOpen ? '접기' : '펼치기'}</div>
+            </summary>
+            <div class="turn-body">${visibleBody}${lowSignalSection}</div>
+          </details>
+        `;
+      }
+
+      function renderOutputBlocks(text = '') {
+        const blocks = splitOutputBlocks(text);
+        const groups = groupOutputBlocks(blocks);
+        if (!groups.length) {
+          outputEl.innerHTML = '<div class="empty">[표시할 내용 없음]</div>';
+          return;
+        }
+
+        outputEl.innerHTML = groups.map((group, index) => {
+          const isOpen = shouldOpenGroup(group, index, groups.length);
+          return group.type === 'turn'
+            ? renderTurnGroup(group, isOpen)
+            : renderSingleBlock(group.block, isOpen);
+        }).join('');
+
+        for (const details of outputEl.querySelectorAll('details.output-turn, details.output-block')) {
+          const toggleEl = details.querySelector('.output-summary-toggle');
+          details.addEventListener('toggle', () => {
+            toggleEl.textContent = details.open ? '접기' : '펼치기';
+          });
+        }
+      }
+
+      function shortenMiddle(text = '', max = 48) {
+        const value = String(text || '');
+        if (value.length <= max) return value;
+        const keep = Math.max(8, Math.floor((max - 1) / 2));
+        return `${value.slice(0, keep)}…${value.slice(-keep)}`;
+      }
+
+      function renderThreadList(threads = []) {
+        lastThreads = threads;
+        renderProjectFilter(threads);
+        const filteredThreads = getFilteredThreads(threads);
+        const isShortThreadList = filteredThreads.length <= 3;
+        threadListEl.classList.toggle('is-short', isShortThreadList);
+        threadListMetaEl.textContent = threadQuery.trim()
+          ? `검색 결과 ${filteredThreads.length}개 / 전체 ${threads.length}개`
+          : `${threads.length}개 스레드`;
+        renderThreadSummary(threads.length, filteredThreads.length);
+
+        if (selectedThreadId && !threads.some((thread) => thread.id === selectedThreadId)) {
+          setSelectedThread('');
+        }
+
+        if (!filteredThreads.length) {
+          threadListEl.innerHTML = '<div class="empty">검색 결과가 없어</div>';
+          return;
+        }
+
+        threadListEl.innerHTML = filteredThreads.map((thread, index) => {
+          const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
+          const hasNew = isThreadNew(thread);
+          const fullTitle = thread.title || '제목 없는 스레드';
+          const fullPath = thread.cwd || '';
+          const compactTitle = shortenMiddle(fullTitle, 56);
+          const compactPath = shortenMiddle(fullPath, 44);
+          return `
+            <button class="thread-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
+              <div class="thread-item-head">
+                <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
+                <div class="thread-item-badges">
+                  ${hasNew ? '<span class="thread-badge-new">new</span>' : ''}
+                </div>
+              </div>
+              <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || 'unknown')}</div>
+              <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
+              <div class="thread-item-meta">업데이트 ${escapeHtml(formatDateTime(thread.updatedAtMs))}</div>
+            </button>
+          `;
+        }).join('');
+
+        for (const button of threadListEl.querySelectorAll('[data-thread-id]')) {
+          button.addEventListener('click', () => {
+            const threadId = button.dataset.threadId || '';
+            setSelectedThread(threadId);
+            renderThreadList(lastThreads);
+            loadSession();
+          });
+        }
+      }
+
+      async function loadThreads() {
+        try {
+          const response = await fetch('/api/threads', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Thread list request failed');
+          }
+          renderThreadList(data.threads || []);
+          const filteredThreads = getFilteredThreads(data.threads || []);
+          const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+          if (nextThreadId && nextThreadId !== selectedThreadId) {
+            setSelectedThread(nextThreadId);
+            renderThreadList(data.threads || []);
+          }
+        } catch (error) {
+          threadListMetaEl.textContent = '목록 불러오기 실패';
+          threadSummaryEl.innerHTML = '';
+          threadListEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      function connectSessionEvents() {
+        closeSessionEventSource();
+        if (!selectedThreadId) return;
+        const threadId = selectedThreadId;
+        const params = new URLSearchParams({ threadId });
+        const source = new EventSource(`/api/session-events?${params.toString()}`);
+        sessionEventSource = source;
+
+        source.addEventListener('session-updated', async () => {
+          await loadSession({ silent: true });
+        });
+
+        source.addEventListener('error', () => {
+          closeSessionEventSource();
+          if (selectedThreadId === threadId) {
+            setTimeout(() => {
+              if (selectedThreadId === threadId && !sessionEventSource) {
+                connectSessionEvents();
+              }
+            }, 2000);
+          }
+        });
+      }
+
+      async function loadSession({ silent = false } = {}) {
+        if (!silent) {
+          statusEl.textContent = '선택한 Codex 스레드 읽는 중…';
+        }
+        try {
+          const params = new URLSearchParams();
+          if (selectedThreadId) params.set('threadId', selectedThreadId);
+          const response = await fetch(`/api/session?${params.toString()}`, { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Request failed');
+          }
+
+          const thread = data.thread || {};
+          const incomingThreads = data.threads || lastThreads;
+          const previousThreadsSignature = getThreadsSignature(lastThreads);
+          const nextThreadsSignature = getThreadsSignature(incomingThreads);
+          const selectedChanged = !!(thread.id && thread.id !== selectedThreadId);
+          if (selectedChanged) {
+            setSelectedThread(thread.id);
+          }
+
+          let viewStateChanged = false;
+          if (thread.id) {
+            viewStateChanged = rememberProjectView(getProjectName(thread), thread.updatedAtMs || Date.now()) || viewStateChanged;
+            viewStateChanged = rememberThreadView(thread.id, thread.updatedAtMs || Date.now()) || viewStateChanged;
+          }
+
+          if (nextThreadsSignature !== previousThreadsSignature || selectedChanged || viewStateChanged) {
+            renderThreadList(incomingThreads);
+          }
+          threadTitleEl.textContent = thread.title || '제목 없는 세션';
+          threadMetaEl.textContent = `${thread.source || 'unknown'} · ${thread.cwd || ''}`;
+          renderStickyContext(thread);
+          const changed = thread.updatedAtMs && thread.updatedAtMs !== lastSessionUpdatedAt;
+          lastSessionUpdatedAt = thread.updatedAtMs || lastSessionUpdatedAt;
+          lastQuickControls = data.quickControls || { terminal: { available: false } };
+          statusEl.textContent = `최근 업데이트 ${formatDateTime(thread.updatedAtMs)} · 항목 ${data.entryCount || 0}개 · ${changed ? '새 이벤트 반영됨' : '이벤트 대기 중'}`;
+          window.__lastOutputText = data.output || '';
+          renderOutputBlocks(window.__lastOutputText);
+          updateControlState();
+        } catch (error) {
+          statusEl.textContent = '세션 읽기 실패';
+          threadTitleEl.textContent = 'Codex 세션을 불러오지 못했어';
+          threadMetaEl.textContent = '';
+          renderStickyContext(null);
+          outputEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      async function sendInput() {
+        const text = inputBoxEl.value.trim();
+        if (!selectedThreadId) {
+          inputStatusEl.textContent = '먼저 보낼 스레드를 선택해줘.';
+          return;
+        }
+        if (!text) {
+          inputStatusEl.textContent = '보낼 내용을 적어줘.';
+          inputBoxEl.focus();
+          return;
+        }
+
+        setInputBusy(true, 'Codex에 입력 보내는 중…');
+        try {
+          const response = await fetch('/api/input', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ threadId: selectedThreadId, text }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Input request failed');
+          }
+
+          if (data.turnId) {
+            activeTurnIds.set(selectedThreadId, data.turnId);
+          }
+          inputBoxEl.value = '';
+          inputStatusEl.textContent = data.turnId
+            ? `전송됨 · turn ${data.turnId.slice(0, 8)}… · 응답 이벤트 기다리는 중`
+            : '전송됨 · 응답 이벤트 기다리는 중';
+          await loadSession({ silent: true });
+        } catch (error) {
+          inputStatusEl.textContent = `전송 실패: ${error.message}`;
+        } finally {
+          setInputBusy(false);
+        }
+      }
+
+      async function sendTerminalControl(action, label) {
+        if (!selectedThreadId) {
+          inputStatusEl.textContent = '먼저 스레드를 선택해줘.';
+          return;
+        }
+        if (!lastQuickControls?.terminal?.available) {
+          inputStatusEl.textContent = '지금은 터미널 입력을 받을 프로세스가 없어.';
+          return;
+        }
+
+        sendingTerminalControl = true;
+        updateControlState();
+        inputStatusEl.textContent = `${label} 보내는 중…`;
+        try {
+          const response = await fetch('/api/terminal-control', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              threadId: selectedThreadId,
+              turnId: lastQuickControls?.terminal?.turnId || activeTurnIds.get(selectedThreadId) || '',
+              action,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Terminal control request failed');
+          }
+
+          inputStatusEl.textContent = `${label} 보냈어.`;
+          await loadSession({ silent: true });
+        } catch (error) {
+          inputStatusEl.textContent = `${label} 실패: ${error.message}`;
+        } finally {
+          sendingTerminalControl = false;
+          updateControlState();
+        }
+      }
+
+      async function interruptTurn() {
+        if (!selectedThreadId) {
+          inputStatusEl.textContent = '먼저 중단할 스레드를 선택해줘.';
+          return;
+        }
+
+        setInterruptBusy(true, '활성 턴 중단 요청 보내는 중…');
+        try {
+          const response = await fetch('/api/interrupt', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ threadId: selectedThreadId, turnId: activeTurnIds.get(selectedThreadId) || '' }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Interrupt request failed');
+          }
+
+          activeTurnIds.delete(selectedThreadId);
+          inputStatusEl.textContent = '중단 요청 보냈어. 상태 이벤트 기다리는 중…';
+          await loadSession({ silent: true });
+        } catch (error) {
+          inputStatusEl.textContent = `중단 실패: ${error.message}`;
+        } finally {
+          setInterruptBusy(false);
+        }
+      }
+
+      function startRefreshLoops() {
+        stopRefreshLoops();
+        const threadMs = document.hidden ? 45000 : 15000;
+        threadRefreshTimer = setInterval(async () => {
+          await loadThreads();
+        }, threadMs);
+      }
+
+      function stopRefreshLoops() {
+        if (threadRefreshTimer) clearInterval(threadRefreshTimer);
+        threadRefreshTimer = null;
+      }
+
+      async function boot() {
+        threadSearchEl.value = threadQuery;
+        threadSortEl.value = threadSort;
+        projectSortEl.value = projectSort;
+        transcriptDensityEl.value = transcriptDensity;
+        renderStickyContext(null);
+        await loadThreads();
+        await loadSession();
+        connectSessionEvents();
+        startRefreshLoops();
+      }
+
+      threadSearchEl.addEventListener('input', async (event) => {
+        setThreadQuery(event.target.value);
+        renderThreadList(lastThreads);
+        const filteredThreads = getFilteredThreads(lastThreads);
+        const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+        if (nextThreadId && nextThreadId !== selectedThreadId) {
+          setSelectedThread(nextThreadId);
+          renderThreadList(lastThreads);
+          await loadSession();
+        }
+      });
+
+      threadSortEl.addEventListener('change', async (event) => {
+        setThreadSort(event.target.value);
+        renderThreadList(lastThreads);
+        const filteredThreads = getFilteredThreads(lastThreads);
+        const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+        if (nextThreadId && nextThreadId !== selectedThreadId) {
+          setSelectedThread(nextThreadId);
+          renderThreadList(lastThreads);
+          await loadSession();
+        }
+      });
+
+      projectSortEl.addEventListener('change', () => {
+        setProjectSort(projectSortEl.value);
+        renderThreadList(lastThreads);
+      });
+
+      transcriptDensityEl.addEventListener('change', () => {
+        transcriptDensity = transcriptDensityEl.value || 'hidden';
+        localStorage.setItem('codex-pocket:transcript-density', transcriptDensity);
+        renderOutputBlocks((window.__lastOutputText || ''));
+      });
+
+      toggleProjectsBtn.addEventListener('click', () => {
+        setProjectChipsCollapsed(!projectChipsCollapsed);
+        updateProjectChipsVisibility();
+      });
+
+
+      inputFormEl.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!sendingInput) {
+          await sendInput();
+        }
+      });
+
+      inputBoxEl.addEventListener('keydown', async (event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+          event.preventDefault();
+          if (!sendingInput) {
+            await sendInput();
+          }
+        }
+      });
+
+      enterBtn.addEventListener('click', async () => {
+        if (!sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          await sendTerminalControl('enter', 'Enter');
+        }
+      });
+
+      escBtn.addEventListener('click', async () => {
+        if (!sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          await sendTerminalControl('esc', 'Esc');
+        }
+      });
+
+      ctrlCBtn.addEventListener('click', async () => {
+        if (!sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          await sendTerminalControl('ctrl_c', 'Ctrl+C');
+        }
+      });
+
+      interruptBtn.addEventListener('click', async () => {
+        if (!interruptingTurn && !sendingInput && !sendingTerminalControl) {
+          await interruptTurn();
+        }
+      });
+
+      refreshBtn.addEventListener('click', loadSession);
+      expandAllBtn.addEventListener('click', () => {
+        for (const details of outputEl.querySelectorAll('details.output-turn, details.output-block')) {
+          details.open = true;
+        }
+      });
+      collapseAllBtn.addEventListener('click', () => {
+        for (const details of outputEl.querySelectorAll('details.output-turn, details.output-block')) {
+          details.open = false;
+        }
+      });
+      refreshThreadsBtn.addEventListener('click', async () => {
+        await loadThreads();
+        await loadSession();
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        startRefreshLoops();
+        if (!document.hidden) {
+          loadThreads();
+        }
+      });
+
+      installTouchScrollGuard(threadListEl);
+      updateControlState();
+      boot();
+      window.addEventListener('beforeunload', () => {
+        closeSessionEventSource();
+        stopRefreshLoops();
+      });
+    </script>
+  </body>
+</html>
