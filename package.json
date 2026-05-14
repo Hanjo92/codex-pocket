@@ -16,6 +16,10 @@
     "account:remove": "node server/cli.js account remove",
     "account:list": "node server/cli.js account list",
     "account:set-default": "node server/cli.js account set-default",
-    "account:show": "node server/cli.js account show"
+    "account:show": "node server/cli.js account show",
+    "user:add": "node server/cli.js user add",
+    "user:remove": "node server/cli.js user remove",
+    "user:list": "node server/cli.js user list",
+    "user:set-password": "node server/cli.js user set-password"
   }
 }

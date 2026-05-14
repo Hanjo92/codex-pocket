@@ -34,7 +34,7 @@ Responsibilities:
 - expose browser-facing HTTP APIs
 - watch for session changes and publish event-driven updates
 - forward input, interrupt, and terminal-control requests to the Codex app-server
-- optionally require shared-token auth for browser/API access
+- optionally require local username/password login for browser/API access
 
 ### 3. Browser client
 
@@ -71,12 +71,12 @@ Responsibilities:
 
 Current baseline in the prototype:
 - browser server binds to `127.0.0.1` by default
-- optional shared token via `CODEX_POCKET_AUTH_TOKEN`
+- optional local browser login users with cookie-based sessions
 - no need to expose the Codex app-server directly to remote clients
 - prefer LAN/VPN/private routes over public exposure
 
 Still missing / future hardening:
-- stronger auth/session management
+- stronger auth/session management beyond local single-host users
 - clearer multi-user separation
 - optional read-only mode
 - tighter auditability for control inputs

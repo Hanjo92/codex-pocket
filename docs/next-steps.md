@@ -17,13 +17,13 @@
 3. Open the UI:
    - local machine: `http://localhost:4782`
    - another trusted device: `http://<host-address>:4782`
-4. If shared-token auth is enabled, enter the token when the browser prompts for it.
+4. If local browser users are configured, sign in with that username/password when the browser login screen appears.
 
 ## Current limitations
 
 - read-side transcript rendering is still based on rollout/state parsing rather than a richer semantic thread model
 - terminal quick controls only work when Codex exposes a live terminal stdin target for the selected thread
-- the auth model is still intentionally simple (shared token), not a full user/session system
+- auth is now local-user + cookie-session based, but still intentionally simple rather than a full multi-role user system
 - the UI is mobile-friendly but still clearly prototype-grade
 
 ## Next implementation targets

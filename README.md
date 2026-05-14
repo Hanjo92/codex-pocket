@@ -27,8 +27,9 @@ See and lightly control a running Codex session from another browser without mir
   - Enter
   - Escape
   - Ctrl+C
-- Optional shared-token protection with a browser login screen and cookie-based session
+- Optional local-user browser login with a cookie-based session
 - Local account/process CLI for repeatable setup and launch
+- Local user-management CLI for adding/removing browser login users on the host machine
 
 ## Current prototype
 
@@ -38,7 +39,7 @@ See and lightly control a running Codex session from another browser without mir
 - reads recent Codex threads from `~/.codex/state_5.sqlite`
 - parses linked rollout JSONL files for transcript display
 - uses the Codex app-server bridge for input, interrupt, and terminal control
-- supports a login-screen + HTTP-only cookie auth flow when `CODEX_POCKET_AUTH_TOKEN` is configured
+- supports a login-screen + HTTP-only cookie auth flow when one or more local users exist in `run/users.json`
 - works in any browser, with extra care for narrow/mobile screens
 
 ## Quick start
@@ -62,17 +63,22 @@ See and lightly control a running Codex session from another browser without mir
    - browser port: `4782`
    - Codex app-server listen URL: `ws://127.0.0.1:4791`
 
-   Optional hardening env vars:
+   Optional hardening/runtime override env vars:
 
    ```bash
    CODEX_POCKET_HOST=127.0.0.1
-   CODEX_POCKET_AUTH_TOKEN=replace-this-with-a-long-random-string
+   ```
+
+   To enable browser login, create a local user on the host machine:
+
+   ```bash
+   npm run user:add -- <username>
    ```
 
 3. Open the UI from a browser:
    - same machine: `http://localhost:4782`
    - another device on the same network/VPN: `http://<host-address>:4782`
-4. If shared-token auth is enabled, sign in through the browser login screen.
+4. If local browser users are configured, sign in through the browser login screen with that username/password.
 5. Pick a thread from the list.
 6. Read the transcript, send input, interrupt, or use quick terminal controls when available.
 
@@ -159,7 +165,8 @@ This creates a local config under `run/accounts.json` (gitignored) and stores:
 - `CODEX_HOME`
 - Codex app-server listen URL
 - Codex app-server URL
-- optional shared auth token
+
+Browser login users are stored separately in `run/users.json` (also gitignored).
 
 ### Add another account
 
@@ -191,6 +198,32 @@ npm run account:show -- <account-name>
 npm run account:set-default -- <account-name>
 ```
 
+### Add a browser login user
+
+```bash
+npm run user:add -- <username>
+```
+
+Passwords are stored as local password hashes in `run/users.json`, not as plain text.
+
+### List browser login users
+
+```bash
+npm run user:list
+```
+
+### Remove a browser login user
+
+```bash
+npm run user:remove -- <username>
+```
+
+### Rotate a browser login password
+
+```bash
+npm run user:set-password -- <username>
+```
+
 ### Print the effective env for an account
 
 ```bash
@@ -208,7 +241,7 @@ This checks things like:
 - `state_5.sqlite` presence
 - Codex app-server reachability
 - bind host / browser port
-- auth-token configuration status
+- whether any local browser login users are configured
 
 ## Architecture
 
@@ -256,7 +289,8 @@ Phase 2:
 - Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
 - Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
 - The safer default bind host is `127.0.0.1`; use `CODEX_POCKET_HOST=0.0.0.0` or another explicit address only when you intentionally want remote reachability.
-- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI uses a login screen and stores the authenticated session in an HTTP-only cookie.
+- Create at least one local browser login user before opening access beyond localhost. The browser UI uses a login screen and stores the authenticated session in an HTTP-only cookie.
+- Browser login users are created locally on the Codex host via the CLI; they are not self-service from the web UI.
 - Browser-facing API payloads are intentionally reduced so normal thread/session reads do not expose host absolute paths like `cwd` or rollout file locations.
 - Anyone who can reach the web UI and satisfy auth may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
 

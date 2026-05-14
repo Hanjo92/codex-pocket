@@ -763,9 +763,10 @@
     <div class="auth-overlay" id="authOverlay" aria-hidden="true">
       <form class="auth-card" id="authForm">
         <h1>codex-pocket 로그인</h1>
-        <p>이 브라우저에서 Codex 세션을 보려면 공유 액세스 토큰이 필요해.</p>
-        <div>
-          <input id="authTokenInput" type="password" placeholder="액세스 토큰" autocomplete="current-password" />
+        <p>이 브라우저에서 Codex 세션을 보려면 이 Mac에서 만든 로컬 계정으로 로그인해야 해.</p>
+        <div class="auth-actions">
+          <input id="authUsernameInput" type="text" placeholder="사용자 이름" autocomplete="username" />
+          <input id="authPasswordInput" type="password" placeholder="비밀번호" autocomplete="current-password" />
         </div>
         <div class="auth-error" id="authError"></div>
         <div class="auth-actions">
@@ -809,13 +810,15 @@
       const terminalStateHintEl = document.getElementById('terminalStateHint');
       const authOverlayEl = document.getElementById('authOverlay');
       const authFormEl = document.getElementById('authForm');
-      const authTokenInputEl = document.getElementById('authTokenInput');
+      const authUsernameInputEl = document.getElementById('authUsernameInput');
+      const authPasswordInputEl = document.getElementById('authPasswordInput');
       const authErrorEl = document.getElementById('authError');
 
       let sessionEventSource = null;
       let threadRefreshTimer = null;
       let authRequired = false;
       let authenticated = false;
+      let authenticatedUsername = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
@@ -1008,45 +1011,47 @@
         }
       }
 
-      function setAuthUiState(nextAuthenticated, nextAuthRequired) {
+      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '') {
         authenticated = !!nextAuthenticated;
         authRequired = !!nextAuthRequired;
+        authenticatedUsername = nextUsername || '';
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
         authOverlayEl.classList.toggle('visible', locked);
         authOverlayEl.setAttribute('aria-hidden', locked ? 'false' : 'true');
         logoutBtn.style.display = authRequired ? '' : 'none';
+        logoutBtn.textContent = authenticatedUsername ? `로그아웃 (${authenticatedUsername})` : '로그아웃';
         if (locked) {
-          authTokenInputEl.focus();
+          setTimeout(() => authUsernameInputEl.focus(), 0);
         }
       }
 
       async function refreshAuthSession() {
         const response = await fetch('/auth/session', { cache: 'no-store' });
         const data = await response.json();
-        setAuthUiState(data.authenticated, data.authRequired);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '');
         return data;
       }
 
-      async function loginWithToken(token) {
+      async function loginWithCredentials(username, password) {
         const response = await fetch('/auth/login', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ username, password }),
         });
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || '로그인 실패');
         }
         authErrorEl.textContent = '';
-        setAuthUiState(data.authenticated, data.authRequired);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '');
         return data;
       }
 
       async function logoutSession() {
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
-        setAuthUiState(false, authRequired);
+        setAuthUiState(false, authRequired, '');
       }
 
       async function apiFetch(input, init = {}) {
@@ -1817,8 +1822,8 @@
         event.preventDefault();
         authErrorEl.textContent = '';
         try {
-          await loginWithToken(authTokenInputEl.value);
-          authTokenInputEl.value = '';
+          await loginWithCredentials(authUsernameInputEl.value.trim(), authPasswordInputEl.value);
+          authPasswordInputEl.value = '';
           await loadThreads();
           await loadSession();
           connectSessionEvents();

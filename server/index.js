@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { timingSafeEqual, randomBytes, scryptSync } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -7,6 +8,8 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../web/public');
+const runDir = path.resolve(__dirname, '../run');
+const usersPath = path.join(runDir, 'users.json');
 const port = Number(process.env.PORT || 4782);
 const host = process.env.HOST || process.env.CODEX_POCKET_HOST || '127.0.0.1';
 const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '', '.codex');
@@ -17,10 +20,12 @@ const appServerListen = process.env.CODEX_POCKET_APP_SERVER_LISTEN || 'ws://127.
 const appServerUrl = process.env.CODEX_POCKET_APP_SERVER_URL || appServerListen;
 const inputMaxBytes = Number(process.env.CODEX_POCKET_INPUT_MAX_BYTES || 16 * 1024);
 const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS || 1500);
-const authToken = String(process.env.CODEX_POCKET_AUTH_TOKEN || '').trim();
+const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS || 60 * 60 * 24 * 30);
+const sessionCookieName = 'codex-pocket-session';
 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
+const authSessions = new Map();
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,37 +67,73 @@ function shouldUseSecureCookies(req) {
   return req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted;
 }
 
-function getRequestToken(req, url) {
-  const authHeader = String(req.headers.authorization || '');
-  if (authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.slice(7).trim();
+async function loadUsers() {
+  try {
+    const raw = await readFile(usersPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed.users) ? parsed.users : [];
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
   }
+}
 
-  const headerToken = String(req.headers['x-codex-pocket-token'] || '').trim();
-  if (headerToken) return headerToken;
+function hashPassword(password, salt) {
+  return scryptSync(password, salt, 64);
+}
 
-  const queryToken = String(url.searchParams.get('token') || '').trim();
-  if (queryToken) return queryToken;
+function verifyPassword(password, user) {
+  const expected = Buffer.from(String(user.passwordHash || ''), 'hex');
+  const actual = hashPassword(password, String(user.salt || ''));
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
 
+function createSession(username) {
+  const sessionId = randomBytes(24).toString('hex');
+  authSessions.set(sessionId, {
+    username,
+    expiresAt: Date.now() + (sessionTtlSeconds * 1000),
+  });
+  return sessionId;
+}
+
+function getSession(req) {
   const cookies = parseCookies(req.headers.cookie || '');
-  return String(cookies['codex-pocket-token'] || '').trim();
+  const sessionId = String(cookies[sessionCookieName] || '').trim();
+  if (!sessionId) return null;
+  const session = authSessions.get(sessionId);
+  if (!session) return null;
+  if (session.expiresAt <= Date.now()) {
+    authSessions.delete(sessionId);
+    return null;
+  }
+  session.expiresAt = Date.now() + (sessionTtlSeconds * 1000);
+  return { sessionId, ...session };
 }
 
-function isAuthenticatedRequest(req, url) {
-  if (!authToken) return true;
-  const token = getRequestToken(req, url);
-  return token === authToken;
+async function getAuthState(req) {
+  const users = await loadUsers();
+  const authRequired = users.length > 0;
+  if (!authRequired) {
+    return { authRequired: false, authenticated: true, username: null, sessionId: null };
+  }
+  const session = getSession(req);
+  if (!session) {
+    return { authRequired: true, authenticated: false, username: null, sessionId: null };
+  }
+  return { authRequired: true, authenticated: true, username: session.username, sessionId: session.sessionId };
 }
 
-function requireAuth(req, res, url) {
-  if (isAuthenticatedRequest(req, url)) return true;
+async function requireAuth(req, res) {
+  const state = await getAuthState(req);
+  if (state.authenticated) return state;
   sendJson(res, 401, {
     error: 'Unauthorized',
     authRequired: true,
     loginRequired: true,
-    hint: 'Sign in with the shared token.'
+    hint: 'Sign in with a local username and password.',
   });
-  return false;
+  return null;
 }
 
 function normalizeJsonRpcError(error) {
@@ -804,48 +845,56 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
   if (url.pathname === '/health') {
+    const users = await loadUsers();
     sendJson(res, 200, {
       ok: true,
-      authRequired: !!authToken,
+      authRequired: users.length > 0,
     });
     return;
   }
 
   if (url.pathname === '/auth/session') {
+    const state = await getAuthState(req);
     sendJson(res, 200, {
-      authenticated: isAuthenticatedRequest(req, url),
-      authRequired: !!authToken,
+      authenticated: state.authenticated,
+      authRequired: state.authRequired,
+      username: state.username,
     });
     return;
   }
 
   if (url.pathname === '/auth/login' && req.method === 'POST') {
     try {
-      if (!authToken) {
-        sendJson(res, 200, { ok: true, authenticated: true, authRequired: false });
+      const users = await loadUsers();
+      if (!users.length) {
+        sendJson(res, 200, { ok: true, authenticated: true, authRequired: false, username: null });
         return;
       }
       const body = await readJsonBody(req);
-      const submittedToken = String(body.token || '').trim();
-      if (!submittedToken || submittedToken !== authToken) {
+      const username = String(body.username || '').trim();
+      const password = String(body.password || '');
+      const user = users.find((entry) => entry.username === username);
+      if (!user || !password || !verifyPassword(password, user)) {
         sendJson(res, 401, {
-          error: 'Invalid token',
+          error: 'Invalid username or password',
           authRequired: true,
           loginRequired: true,
         });
         return;
       }
+      const sessionId = createSession(username);
       sendJson(res, 200, {
         ok: true,
         authenticated: true,
         authRequired: true,
+        username,
       }, {
-        'set-cookie': serializeCookie('codex-pocket-token', submittedToken, {
+        'set-cookie': serializeCookie(sessionCookieName, sessionId, {
           httpOnly: true,
           sameSite: 'Lax',
           path: '/',
           secure: shouldUseSecureCookies(req),
-          maxAge: 60 * 60 * 24 * 30,
+          maxAge: sessionTtlSeconds,
         }),
       });
     } catch (error) {
@@ -857,8 +906,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/auth/logout' && req.method === 'POST') {
+    const session = getSession(req);
+    if (session?.sessionId) {
+      authSessions.delete(session.sessionId);
+    }
     sendJson(res, 200, { ok: true }, {
-      'set-cookie': serializeCookie('codex-pocket-token', '', {
+      'set-cookie': serializeCookie(sessionCookieName, '', {
         httpOnly: true,
         sameSite: 'Lax',
         path: '/',
@@ -869,8 +922,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname.startsWith('/api/') && !requireAuth(req, res, url)) {
-    return;
+  if (url.pathname.startsWith('/api/')) {
+    const authState = await requireAuth(req, res);
+    if (!authState) return;
   }
 
   if (url.pathname === '/') {
@@ -963,9 +1017,10 @@ const server = http.createServer(async (req, res) => {
   res.end('Not found');
 });
 
-server.listen(port, host, () => {
+server.listen(port, host, async () => {
+  const users = await loadUsers().catch(() => []);
   console.log(`codex-pocket listening on http://${host}:${port}`);
   console.log(`Reading Codex data from ${codexHome}`);
   console.log(`Input bridge target: ${appServerUrl}`);
-  console.log(`Auth token ${authToken ? 'enabled' : 'disabled'}`);
+  console.log(`Login auth ${users.length ? `enabled (${users.length} user${users.length === 1 ? '' : 's'})` : 'disabled'}`);
 });
