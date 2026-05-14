@@ -1,33 +1,35 @@
 # Immediate next steps
 
-## What this scaffold does
+## What the current prototype already does
 
-- serves a tiny mobile-friendly web page
-- reads the latest Codex thread metadata from `~/.codex/state_5.sqlite`
-- parses the linked rollout JSONL transcript
-- shows recent Codex activity in Safari on iPhone
+- serves a browser-based Codex viewer/controller UI
+- reads recent Codex thread metadata from `~/.codex/state_5.sqlite`
+- parses linked rollout JSONL transcripts
 - lists recent Codex threads and lets you switch between them
+- supports text input, interrupt, and conditional terminal quick controls
+- uses event-driven session refresh instead of constant session polling
 
 ## How to try it
 
-1. Make sure Codex desktop or CLI has been used on this Mac
+1. Make sure Codex has been used on the host machine.
 2. Start this project:
-   - `cd /Users/song/Projects/codex-pocket`
    - `npm start`
-3. Open on the Mac first:
-   - `http://localhost:4782`
-4. On the same network, try the Mac IP from iPhone Safari too
+3. Open the UI:
+   - local machine: `http://localhost:4782`
+   - another trusted device: `http://<host-address>:4782`
+4. If shared-token auth is enabled, enter the token when the browser prompts for it.
 
 ## Current limitations
 
-- polling only, no WebSocket live streaming yet
-- no authentication yet
-- terminal quick controls are wired, but only activate when Codex exposes a live terminal stdin target for the current thread
-- app-server write path currently targets local Codex on this Mac only
+- read-side transcript rendering is still based on rollout/state parsing rather than a richer semantic thread model
+- terminal quick controls only work when Codex exposes a live terminal stdin target for the selected thread
+- the auth model is still intentionally simple (shared token), not a full user/session system
+- the UI is mobile-friendly but still clearly prototype-grade
 
 ## Next implementation targets
 
-1. add WebSocket live updates
+1. improve transcript modeling beyond rollout parsing
 2. make terminal-interaction state surface faster/more reliably in the UI
-3. add Tailscale or token auth
+3. add optional read-only mode or stronger control scoping
 4. add thread pinning/favorites or stronger filtering if the list grows
+5. tighten security and deployment guidance for broader self-hosted use

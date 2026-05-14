@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../web/public');
 const port = Number(process.env.PORT || 4782);
+const host = process.env.HOST || process.env.CODEX_POCKET_HOST || '127.0.0.1';
 const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '', '.codex');
 const maxEntries = Number(process.env.CODEX_POCKET_MAX_ENTRIES || 120);
 const maxThreads = Number(process.env.CODEX_POCKET_MAX_THREADS || 40);
@@ -16,6 +17,7 @@ const appServerListen = process.env.CODEX_POCKET_APP_SERVER_LISTEN || 'ws://127.
 const appServerUrl = process.env.CODEX_POCKET_APP_SERVER_URL || appServerListen;
 const inputMaxBytes = Number(process.env.CODEX_POCKET_INPUT_MAX_BYTES || 16 * 1024);
 const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS || 1500);
+const authToken = String(process.env.CODEX_POCKET_AUTH_TOKEN || '').trim();
 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
@@ -29,6 +31,49 @@ function createError(message, statusCode = 500, details = null) {
   error.statusCode = statusCode;
   error.details = details;
   return error;
+}
+
+function parseCookies(header = '') {
+  return String(header || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .reduce((acc, part) => {
+      const eqIndex = part.indexOf('=');
+      if (eqIndex === -1) return acc;
+      const key = decodeURIComponent(part.slice(0, eqIndex).trim());
+      const value = decodeURIComponent(part.slice(eqIndex + 1).trim());
+      acc[key] = value;
+      return acc;
+    }, {});
+}
+
+function getRequestToken(req, url) {
+  const authHeader = String(req.headers.authorization || '');
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+
+  const headerToken = String(req.headers['x-codex-pocket-token'] || '').trim();
+  if (headerToken) return headerToken;
+
+  const queryToken = String(url.searchParams.get('token') || '').trim();
+  if (queryToken) return queryToken;
+
+  const cookies = parseCookies(req.headers.cookie || '');
+  return String(cookies['codex-pocket-token'] || '').trim();
+}
+
+function requireAuth(req, res, url) {
+  if (!authToken) return true;
+  const token = getRequestToken(req, url);
+  if (token === authToken) return true;
+  sendJson(res, 401, {
+    error: 'Unauthorized',
+    authRequired: true,
+    hint: 'Provide the shared token via Bearer auth, x-codex-pocket-token, cookie, or ?token=...'
+  });
+  return false;
 }
 
 function normalizeJsonRpcError(error) {
@@ -415,6 +460,13 @@ function extractTextFromMessageContent(content = []) {
     .trim();
 }
 
+function getProjectLabel(cwd = '') {
+  const normalized = String(cwd || '').replace(/\/$/, '');
+  if (!normalized) return '(경로 없음)';
+  const parts = normalized.split('/').filter(Boolean);
+  return parts[parts.length - 1] || normalized;
+}
+
 function formatRolloutEntry(entry) {
   const timestamp = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString('ko-KR', {
     hour: '2-digit',
@@ -480,6 +532,18 @@ function getTerminalInteractionState(threadId) {
   };
 }
 
+function toPublicThread(thread = {}) {
+  return {
+    id: thread.id,
+    title: thread.title,
+    source: thread.source,
+    projectLabel: getProjectLabel(thread.cwd),
+    updatedAtMs: thread.updated_at_ms,
+    createdAtMs: thread.created_at_ms,
+    threadSource: thread.thread_source || null,
+  };
+}
+
 async function getSessionPayload(threadId) {
   const [thread, threads] = await Promise.all([
     readThreadMeta(threadId),
@@ -494,20 +558,11 @@ async function getSessionPayload(threadId) {
       id: thread.id,
       title: thread.title,
       source: thread.source,
-      cwd: thread.cwd,
+      projectLabel: getProjectLabel(thread.cwd),
       updatedAtMs: thread.updated_at_ms,
       createdAtMs: thread.created_at_ms,
-      rolloutPath: thread.rollout_path,
     },
-    threads: threads.map((item) => ({
-      id: item.id,
-      title: item.title,
-      source: item.source,
-      cwd: item.cwd,
-      updatedAtMs: item.updated_at_ms,
-      createdAtMs: item.created_at_ms,
-      threadSource: item.thread_source || null,
-    })),
+    threads: threads.map(toPublicThread),
     quickControls: {
       interrupt: true,
       terminal: terminalInteraction,
@@ -726,6 +781,18 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+  if (url.pathname === '/health') {
+    sendJson(res, 200, {
+      ok: true,
+      authRequired: !!authToken,
+    });
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/') && !requireAuth(req, res, url)) {
+    return;
+  }
+
   if (url.pathname === '/') {
     try {
       const html = await getIndexHtml();
@@ -741,7 +808,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/threads') {
     try {
       const threads = await listThreads();
-      sendJson(res, 200, { threads });
+      sendJson(res, 200, { threads: threads.map(toPublicThread) });
     } catch (error) {
       sendJson(res, 500, { error: error.message });
     }
@@ -812,25 +879,13 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === '/health') {
-    sendJson(res, 200, {
-      ok: true,
-      mode: 'rollout',
-      inputMode: 'app-server',
-      codexHome,
-      appServerUrl,
-      maxThreads,
-      maxEntries,
-    });
-    return;
-  }
-
   res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
   res.end('Not found');
 });
 
-server.listen(port, () => {
-  console.log(`codex-pocket listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`codex-pocket listening on http://${host}:${port}`);
   console.log(`Reading Codex data from ${codexHome}`);
   console.log(`Input bridge target: ${appServerUrl}`);
+  console.log(`Auth token ${authToken ? 'enabled' : 'disabled'}`);
 });

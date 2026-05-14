@@ -2,59 +2,58 @@
 
 ## Phase 0 — validate the shape
 
-Goal: confirm that a tmux-backed mobile view is enough.
+Goal: confirm that a Codex-aware browser surface is enough.
 
-- run Codex in a named `tmux` session
-- verify output can be captured cleanly
-- verify small input forwarding works reliably
-- check whether Codex UI needs full terminal emulation
+- verify recent threads can be discovered from local Codex state
+- verify rollout/transcript parsing is usable for reading
+- verify small input forwarding works reliably through Codex app-server
+- verify interrupt and simple terminal controls cover the common cases
 
 ## Phase 1 — thin web prototype
 
-Goal: usable phone access with minimal build cost.
+Goal: usable browser access with minimal build cost.
 
 Build:
-- small server on the Mac (Node or Python)
-- WebSocket output stream
+- small local Node server
+- thread list + transcript view
 - mobile-friendly web UI
-- text input + Enter/Esc/Ctrl+C buttons
-- optional read-only mode
+- text input + Enter/Esc/Ctrl+C buttons when available
+- lightweight auth for trusted private use
 
 Success criteria:
-- can read the active Codex session on iPhone
+- can read recent Codex session/thread activity from another browser
 - can send short inputs
+- can interrupt an active turn
 - can recover after temporary disconnect
 
 ## Phase 2 — quality pass
 
-- better terminal rendering
-- reconnect/session resume
+- better transcript grouping and readability
+- reconnect/session resume improvements
 - auth hardening
-- one-tap home-screen install
-- quick action buttons for common flows
+- one-tap install / wrapper-friendly UX
+- stronger thread/project navigation
 
 ## Phase 3 — native app decision
 
-Move to SwiftUI only if at least one of these matters:
-- much better readability/interaction needed
+Move to a native wrapper or dedicated app only if at least one of these matters:
+- much better readability/interaction is needed
 - background behavior matters
 - notifications matter
 - multiple hosts/sessions need richer UX
 
-## Suggested first technical spike
+## Suggested next technical spikes
 
-Compare these two approaches:
+### Option A: richer semantic thread modeling
+- cleaner user/assistant turn extraction
+- better transcript summaries
+- safer/higher-quality UI decisions
 
-### Option A: tmux capture + custom renderer
-- simpler
-- more app-specific control
-- may break on richer terminal behavior
+### Option B: stronger deployment/auth model
+- better remote access story
+- clearer self-hosting guidance
+- more confidence before public exposure
 
-### Option B: existing web terminal stack
-- xterm.js or similar
-- more faithful terminal rendering
-- slightly heavier but safer for TUI behavior
+## Recommendation
 
-## My recommendation
-
-Start with Option B for the prototype unless the Codex output is mostly plain text.
+Keep the browser-first approach, then invest next in stronger transcript modeling and security/deployment hardening before expanding scope further.

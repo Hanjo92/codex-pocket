@@ -45,6 +45,18 @@ See and lightly control a running Codex session from another browser without mir
    npm start
    ```
 
+   Safer defaults in the current prototype:
+   - bind host: `127.0.0.1`
+   - browser port: `4782`
+   - Codex app-server listen URL: `ws://127.0.0.1:4791`
+
+   Optional hardening env vars:
+
+   ```bash
+   CODEX_POCKET_HOST=127.0.0.1
+   CODEX_POCKET_AUTH_TOKEN=replace-this-with-a-long-random-string
+   ```
+
 3. Open the UI from a browser:
    - same machine: `http://localhost:4782`
    - another device on the same network/VPN: `http://<host-address>:4782`
@@ -81,6 +93,7 @@ Important detail:
 - the browser only needs access to the `codex-pocket` web server port
 - the Codex app-server itself can stay bound to `127.0.0.1` on the host, because `codex-pocket` talks to it locally
 - in the current prototype, the browser-facing port is `4782` by default
+- by default the web server now binds to `127.0.0.1`, so LAN/VPN exposure requires an explicit host override
 
 In other words: remote browser access can be generalized as "any trusted network path to the host web UI," not "Tailscale only."
 
@@ -156,7 +169,9 @@ Phase 2:
 - Prefer `localhost`, LAN, VPN, or another trusted private route.
 - Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
 - Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
-- Anyone who can reach the web UI may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
+- The safer default bind host is `127.0.0.1`; use `CODEX_POCKET_HOST=0.0.0.0` or another explicit address only when you intentionally want remote reachability.
+- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI will prompt for the shared token when the API requires it.
+- Anyone who can reach the web UI and satisfy auth may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
 
 ## Recommendation
 

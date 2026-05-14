@@ -654,7 +654,7 @@
             </div>
             <div class="project-chips" id="projectFilter" aria-label="프로젝트 필터"></div>
             <div class="thread-search">
-              <input id="threadSearch" type="search" placeholder="제목, 경로, source 검색" autocomplete="off" />
+              <input id="threadSearch" type="search" placeholder="제목, 프로젝트, source 검색" autocomplete="off" />
             </div>
             <div>
               <select id="threadSort" aria-label="스레드 정렬">
@@ -749,6 +749,7 @@
 
       let sessionEventSource = null;
       let threadRefreshTimer = null;
+      let authToken = localStorage.getItem('codex-pocket:auth-token') || '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
@@ -861,10 +862,7 @@
       }
 
       function getProjectName(thread = {}) {
-        const cwd = String(thread.cwd || '').replace(/\/$/, '');
-        if (!cwd) return '(경로 없음)';
-        const parts = cwd.split('/').filter(Boolean);
-        return parts[parts.length - 1] || cwd;
+        return String(thread.projectLabel || '').trim() || '(경로 없음)';
       }
 
       function getProjectStats(threads = []) {
@@ -891,7 +889,7 @@
       }
 
       function normalizedThreadSearch(thread) {
-        return [thread.title, thread.cwd, thread.source, getProjectName(thread)]
+        return [thread.title, thread.source, getProjectName(thread)]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
@@ -927,7 +925,7 @@
           thread.id || '',
           thread.updatedAtMs || 0,
           thread.title || '',
-          thread.cwd || '',
+          thread.projectLabel || '',
           thread.source || '',
         ].join('|')).join('\n');
       }
@@ -942,6 +940,62 @@
           sessionEventSource.close();
           sessionEventSource = null;
         }
+      }
+
+      function getAuthQueryParams() {
+        const params = new URLSearchParams();
+        if (authToken) params.set('token', authToken);
+        return params;
+      }
+
+      function mergeAuthQuery(params = new URLSearchParams()) {
+        const merged = new URLSearchParams(params);
+        if (authToken) merged.set('token', authToken);
+        return merged;
+      }
+
+      function getAuthHeaders(extra = {}) {
+        const headers = { ...extra };
+        if (authToken) {
+          headers.Authorization = `Bearer ${authToken}`;
+        }
+        return headers;
+      }
+
+      function setAuthToken(nextToken) {
+        authToken = String(nextToken || '').trim();
+        if (authToken) {
+          localStorage.setItem('codex-pocket:auth-token', authToken);
+        } else {
+          localStorage.removeItem('codex-pocket:auth-token');
+        }
+      }
+
+      async function ensureAuthToken() {
+        if (authToken) return true;
+        const nextToken = window.prompt('codex-pocket access token을 입력해줘.');
+        if (!nextToken) return false;
+        setAuthToken(nextToken);
+        return true;
+      }
+
+      async function apiFetch(input, init = {}) {
+        const response = await fetch(input, {
+          ...init,
+          headers: getAuthHeaders(init.headers || {}),
+        });
+
+        if (response.status === 401) {
+          setAuthToken('');
+          const retried = await ensureAuthToken();
+          if (!retried) return response;
+          return fetch(input, {
+            ...init,
+            headers: getAuthHeaders(init.headers || {}),
+          });
+        }
+
+        return response;
       }
 
       function installTouchScrollGuard(el) {
@@ -1080,7 +1134,7 @@
           ? `${activeProject} · ${activeThread.title || '제목 없는 스레드'}`
           : `${activeProject} · 스레드 선택 대기 중`;
         stickyContextMetaEl.textContent = activeThread
-          ? `${activeThread.source || 'unknown'} · ${activeThread.cwd || ''}${projectActivity}`
+          ? `${activeThread.source || 'unknown'}${projectActivity}`
           : `프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.${projectActivity}`;
       }
 
@@ -1407,7 +1461,7 @@
           const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
           const hasNew = isThreadNew(thread);
           const fullTitle = thread.title || '제목 없는 스레드';
-          const fullPath = thread.cwd || '';
+          const fullPath = getProjectName(thread);
           const compactTitle = shortenMiddle(fullTitle, 56);
           const compactPath = shortenMiddle(fullPath, 44);
           return `
@@ -1437,7 +1491,7 @@
 
       async function loadThreads() {
         try {
-          const response = await fetch('/api/threads', { cache: 'no-store' });
+          const response = await apiFetch('/api/threads', { cache: 'no-store' });
           const data = await response.json();
           if (!response.ok) {
             throw new Error(data.error || 'Thread list request failed');
@@ -1460,7 +1514,7 @@
         closeSessionEventSource();
         if (!selectedThreadId) return;
         const threadId = selectedThreadId;
-        const params = new URLSearchParams({ threadId });
+        const params = mergeAuthQuery(new URLSearchParams({ threadId }));
         const source = new EventSource(`/api/session-events?${params.toString()}`);
         sessionEventSource = source;
 
@@ -1485,9 +1539,9 @@
           statusEl.textContent = '선택한 Codex 스레드 읽는 중…';
         }
         try {
-          const params = new URLSearchParams();
+          const params = mergeAuthQuery(new URLSearchParams());
           if (selectedThreadId) params.set('threadId', selectedThreadId);
-          const response = await fetch(`/api/session?${params.toString()}`, { cache: 'no-store' });
+          const response = await apiFetch(`/api/session?${params.toString()}`, { cache: 'no-store' });
           const data = await response.json();
           if (!response.ok) {
             throw new Error(data.error || 'Request failed');
@@ -1512,7 +1566,7 @@
             renderThreadList(incomingThreads);
           }
           threadTitleEl.textContent = thread.title || '제목 없는 세션';
-          threadMetaEl.textContent = `${thread.source || 'unknown'} · ${thread.cwd || ''}`;
+          threadMetaEl.textContent = `${thread.source || 'unknown'} · ${getProjectName(thread)}`;
           renderStickyContext(thread);
           const changed = thread.updatedAtMs && thread.updatedAtMs !== lastSessionUpdatedAt;
           lastSessionUpdatedAt = thread.updatedAtMs || lastSessionUpdatedAt;
@@ -1544,7 +1598,7 @@
 
         setInputBusy(true, 'Codex에 입력 보내는 중…');
         try {
-          const response = await fetch('/api/input', {
+          const response = await apiFetch('/api/input', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ threadId: selectedThreadId, text }),
@@ -1583,7 +1637,7 @@
         updateControlState();
         inputStatusEl.textContent = `${label} 보내는 중…`;
         try {
-          const response = await fetch('/api/terminal-control', {
+          const response = await apiFetch('/api/terminal-control', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
@@ -1615,7 +1669,7 @@
 
         setInterruptBusy(true, '활성 턴 중단 요청 보내는 중…');
         try {
-          const response = await fetch('/api/interrupt', {
+          const response = await apiFetch('/api/interrupt', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ threadId: selectedThreadId, turnId: activeTurnIds.get(selectedThreadId) || '' }),
