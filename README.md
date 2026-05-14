@@ -18,22 +18,27 @@ See and lightly control a running Codex session from another browser without mir
 
 - Read recent Codex threads from local Codex state
 - Pick a specific thread from the browser UI
-- Search/filter/sort threads by title, path, source, and project
+- Search/filter/sort threads by title, source, and project label
 - View transcripts in a mobile-friendly, collapsible format
+- Show a cleaner browser-facing thread/session model without exposing host absolute paths in normal API payloads
 - Send text input into the selected thread
 - Interrupt the active turn
 - Send quick terminal controls when Codex exposes a live stdin target:
   - Enter
   - Escape
   - Ctrl+C
+- Optional shared-token protection with a browser login screen and cookie-based session
+- Local account/process CLI for repeatable setup and launch
 
 ## Current prototype
 
 - `npm start`
+- or `npm run run` via the local account-aware CLI
 - serves on `http://localhost:4782`
 - reads recent Codex threads from `~/.codex/state_5.sqlite`
 - parses linked rollout JSONL files for transcript display
 - uses the Codex app-server bridge for input, interrupt, and terminal control
+- supports a login-screen + HTTP-only cookie auth flow when `CODEX_POCKET_AUTH_TOKEN` is configured
 - works in any browser, with extra care for narrow/mobile screens
 
 ## Quick start
@@ -67,8 +72,9 @@ See and lightly control a running Codex session from another browser without mir
 3. Open the UI from a browser:
    - same machine: `http://localhost:4782`
    - another device on the same network/VPN: `http://<host-address>:4782`
-4. Pick a thread from the list.
-5. Read the transcript, send input, interrupt, or use quick terminal controls when available.
+4. If shared-token auth is enabled, sign in through the browser login screen.
+5. Pick a thread from the list.
+6. Read the transcript, send input, interrupt, or use quick terminal controls when available.
 
 ## Quick mental model
 
@@ -133,7 +139,7 @@ In other words: remote browser access can be generalized as "any trusted network
 
 ## Local process/account commands
 
-The project now includes a small local CLI for repeatable setup.
+The project now includes a small local CLI for repeatable setup, account switching, and preflight checks.
 
 ### Run the current/default account
 
@@ -197,6 +203,13 @@ npm run print-env -- <account-name>
 npm run doctor -- <account-name>
 ```
 
+This checks things like:
+- `CODEX_HOME` presence
+- `state_5.sqlite` presence
+- Codex app-server reachability
+- bind host / browser port
+- auth-token configuration status
+
 ## Architecture
 
 ### Host side
@@ -243,7 +256,8 @@ Phase 2:
 - Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
 - Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
 - The safer default bind host is `127.0.0.1`; use `CODEX_POCKET_HOST=0.0.0.0` or another explicit address only when you intentionally want remote reachability.
-- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI now shows a login screen and stores the authenticated session in an HTTP-only cookie.
+- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI uses a login screen and stores the authenticated session in an HTTP-only cookie.
+- Browser-facing API payloads are intentionally reduced so normal thread/session reads do not expose host absolute paths like `cwd` or rollout file locations.
 - Anyone who can reach the web UI and satisfy auth may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
 
 ## Recommendation
