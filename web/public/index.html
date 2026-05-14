@@ -43,6 +43,52 @@
         border-radius: 16px;
         padding: 10px 12px;
       }
+      body.auth-locked {
+        overflow: hidden;
+      }
+      .auth-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(4, 8, 18, 0.78);
+        backdrop-filter: blur(12px);
+      }
+      .auth-overlay.visible {
+        display: flex;
+      }
+      .auth-card {
+        width: min(100%, 420px);
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: 0 18px 60px rgba(0,0,0,0.4);
+        display: grid;
+        gap: 12px;
+      }
+      .auth-card h1 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .auth-card p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .auth-actions {
+        display: grid;
+        gap: 8px;
+      }
+      .auth-error {
+        color: #fca5a5;
+        font-size: 12px;
+        min-height: 18px;
+      }
       .sticky-context-title {
         font-size: 12px;
         font-weight: 700;
@@ -687,6 +733,7 @@
               <option value="notes-only">agent note만 보기</option>
               <option value="all">tool + agent note 보기</option>
             </select>
+            <button id="logoutBtn" class="secondary" type="button" style="display:none">로그아웃</button>
           </div>
           <div class="status muted" id="status">연결 준비 중…</div>
           <form class="composer" id="inputForm">
@@ -712,6 +759,19 @@
           <div class="output-list" id="output">Connecting…</div>
         </main>
       </div>
+    </div>
+    <div class="auth-overlay" id="authOverlay" aria-hidden="true">
+      <form class="auth-card" id="authForm">
+        <h1>codex-pocket 로그인</h1>
+        <p>이 브라우저에서 Codex 세션을 보려면 공유 액세스 토큰이 필요해.</p>
+        <div>
+          <input id="authTokenInput" type="password" placeholder="액세스 토큰" autocomplete="current-password" />
+        </div>
+        <div class="auth-error" id="authError"></div>
+        <div class="auth-actions">
+          <button type="submit">로그인</button>
+        </div>
+      </form>
     </div>
     <script>
       const statusEl = document.getElementById('status');
@@ -742,14 +802,20 @@
       const ctrlCBtn = document.getElementById('ctrlCBtn');
       const interruptBtn = document.getElementById('interruptBtn');
       const transcriptDensityEl = document.getElementById('transcriptDensity');
+      const logoutBtn = document.getElementById('logoutBtn');
       const terminalStateCardEl = document.getElementById('terminalStateCard');
       const terminalStateBadgeEl = document.getElementById('terminalStateBadge');
       const terminalStateMetaEl = document.getElementById('terminalStateMeta');
       const terminalStateHintEl = document.getElementById('terminalStateHint');
+      const authOverlayEl = document.getElementById('authOverlay');
+      const authFormEl = document.getElementById('authForm');
+      const authTokenInputEl = document.getElementById('authTokenInput');
+      const authErrorEl = document.getElementById('authError');
 
       let sessionEventSource = null;
       let threadRefreshTimer = null;
-      let authToken = localStorage.getItem('codex-pocket:auth-token') || '';
+      let authRequired = false;
+      let authenticated = false;
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
@@ -942,57 +1008,55 @@
         }
       }
 
-      function getAuthQueryParams() {
-        const params = new URLSearchParams();
-        if (authToken) params.set('token', authToken);
-        return params;
-      }
-
-      function mergeAuthQuery(params = new URLSearchParams()) {
-        const merged = new URLSearchParams(params);
-        if (authToken) merged.set('token', authToken);
-        return merged;
-      }
-
-      function getAuthHeaders(extra = {}) {
-        const headers = { ...extra };
-        if (authToken) {
-          headers.Authorization = `Bearer ${authToken}`;
-        }
-        return headers;
-      }
-
-      function setAuthToken(nextToken) {
-        authToken = String(nextToken || '').trim();
-        if (authToken) {
-          localStorage.setItem('codex-pocket:auth-token', authToken);
-        } else {
-          localStorage.removeItem('codex-pocket:auth-token');
+      function setAuthUiState(nextAuthenticated, nextAuthRequired) {
+        authenticated = !!nextAuthenticated;
+        authRequired = !!nextAuthRequired;
+        const locked = authRequired && !authenticated;
+        document.body.classList.toggle('auth-locked', locked);
+        authOverlayEl.classList.toggle('visible', locked);
+        authOverlayEl.setAttribute('aria-hidden', locked ? 'false' : 'true');
+        logoutBtn.style.display = authRequired ? '' : 'none';
+        if (locked) {
+          authTokenInputEl.focus();
         }
       }
 
-      async function ensureAuthToken() {
-        if (authToken) return true;
-        const nextToken = window.prompt('codex-pocket access token을 입력해줘.');
-        if (!nextToken) return false;
-        setAuthToken(nextToken);
-        return true;
+      async function refreshAuthSession() {
+        const response = await fetch('/auth/session', { cache: 'no-store' });
+        const data = await response.json();
+        setAuthUiState(data.authenticated, data.authRequired);
+        return data;
+      }
+
+      async function loginWithToken(token) {
+        const response = await fetch('/auth/login', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || '로그인 실패');
+        }
+        authErrorEl.textContent = '';
+        setAuthUiState(data.authenticated, data.authRequired);
+        return data;
+      }
+
+      async function logoutSession() {
+        await fetch('/auth/logout', { method: 'POST' });
+        closeSessionEventSource();
+        setAuthUiState(false, authRequired);
       }
 
       async function apiFetch(input, init = {}) {
         const response = await fetch(input, {
           ...init,
-          headers: getAuthHeaders(init.headers || {}),
+          credentials: 'same-origin',
         });
 
         if (response.status === 401) {
-          setAuthToken('');
-          const retried = await ensureAuthToken();
-          if (!retried) return response;
-          return fetch(input, {
-            ...init,
-            headers: getAuthHeaders(init.headers || {}),
-          });
+          setAuthUiState(false, true);
         }
 
         return response;
@@ -1514,7 +1578,7 @@
         closeSessionEventSource();
         if (!selectedThreadId) return;
         const threadId = selectedThreadId;
-        const params = mergeAuthQuery(new URLSearchParams({ threadId }));
+        const params = new URLSearchParams({ threadId });
         const source = new EventSource(`/api/session-events?${params.toString()}`);
         sessionEventSource = source;
 
@@ -1539,7 +1603,7 @@
           statusEl.textContent = '선택한 Codex 스레드 읽는 중…';
         }
         try {
-          const params = mergeAuthQuery(new URLSearchParams());
+          const params = new URLSearchParams();
           if (selectedThreadId) params.set('threadId', selectedThreadId);
           const response = await apiFetch(`/api/session?${params.toString()}`, { cache: 'no-store' });
           const data = await response.json();
@@ -1708,6 +1772,12 @@
         projectSortEl.value = projectSort;
         transcriptDensityEl.value = transcriptDensity;
         renderStickyContext(null);
+        const session = await refreshAuthSession();
+        if (session.authRequired && !session.authenticated) {
+          statusEl.textContent = '로그인이 필요해.';
+          outputEl.innerHTML = '<div class="empty">로그인 후 세션 내용을 불러올 수 있어.</div>';
+          return;
+        }
         await loadThreads();
         await loadSession();
         connectSessionEvents();
@@ -1741,6 +1811,28 @@
       projectSortEl.addEventListener('change', () => {
         setProjectSort(projectSortEl.value);
         renderThreadList(lastThreads);
+      });
+
+      authFormEl.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        authErrorEl.textContent = '';
+        try {
+          await loginWithToken(authTokenInputEl.value);
+          authTokenInputEl.value = '';
+          await loadThreads();
+          await loadSession();
+          connectSessionEvents();
+          startRefreshLoops();
+        } catch (error) {
+          authErrorEl.textContent = error.message;
+        }
+      });
+
+      logoutBtn.addEventListener('click', async () => {
+        await logoutSession();
+        stopRefreshLoops();
+        outputEl.innerHTML = '<div class="empty">로그인 후 세션 내용을 불러올 수 있어.</div>';
+        statusEl.textContent = '로그아웃됨';
       });
 
       transcriptDensityEl.addEventListener('change', () => {
@@ -1812,6 +1904,7 @@
       });
 
       document.addEventListener('visibilitychange', () => {
+        if (authRequired && !authenticated) return;
         startRefreshLoops();
         if (!document.hidden) {
           loadThreads();

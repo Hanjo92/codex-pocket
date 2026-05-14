@@ -48,6 +48,20 @@ function parseCookies(header = '') {
     }, {});
 }
 
+function serializeCookie(name, value, options = {}) {
+  const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+  parts.push(`Path=${options.path || '/'}`);
+  parts.push(`SameSite=${options.sameSite || 'Lax'}`);
+  if (options.httpOnly !== false) parts.push('HttpOnly');
+  if (options.maxAge !== undefined) parts.push(`Max-Age=${Math.max(0, Math.floor(options.maxAge))}`);
+  if (options.secure) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function shouldUseSecureCookies(req) {
+  return req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted;
+}
+
 function getRequestToken(req, url) {
   const authHeader = String(req.headers.authorization || '');
   if (authHeader.toLowerCase().startsWith('bearer ')) {
@@ -64,14 +78,19 @@ function getRequestToken(req, url) {
   return String(cookies['codex-pocket-token'] || '').trim();
 }
 
-function requireAuth(req, res, url) {
+function isAuthenticatedRequest(req, url) {
   if (!authToken) return true;
   const token = getRequestToken(req, url);
-  if (token === authToken) return true;
+  return token === authToken;
+}
+
+function requireAuth(req, res, url) {
+  if (isAuthenticatedRequest(req, url)) return true;
   sendJson(res, 401, {
     error: 'Unauthorized',
     authRequired: true,
-    hint: 'Provide the shared token via Bearer auth, x-codex-pocket-token, cookie, or ?token=...'
+    loginRequired: true,
+    hint: 'Sign in with the shared token.'
   });
   return false;
 }
@@ -767,8 +786,11 @@ async function startSessionEventStream(req, res, threadId) {
   req.on('aborted', cleanup);
 }
 
-function sendJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' });
+function sendJson(res, statusCode, payload, headers = {}) {
+  res.writeHead(statusCode, {
+    'content-type': 'application/json; charset=utf-8',
+    ...headers,
+  });
   res.end(JSON.stringify(payload));
 }
 
@@ -785,6 +807,64 @@ const server = http.createServer(async (req, res) => {
     sendJson(res, 200, {
       ok: true,
       authRequired: !!authToken,
+    });
+    return;
+  }
+
+  if (url.pathname === '/auth/session') {
+    sendJson(res, 200, {
+      authenticated: isAuthenticatedRequest(req, url),
+      authRequired: !!authToken,
+    });
+    return;
+  }
+
+  if (url.pathname === '/auth/login' && req.method === 'POST') {
+    try {
+      if (!authToken) {
+        sendJson(res, 200, { ok: true, authenticated: true, authRequired: false });
+        return;
+      }
+      const body = await readJsonBody(req);
+      const submittedToken = String(body.token || '').trim();
+      if (!submittedToken || submittedToken !== authToken) {
+        sendJson(res, 401, {
+          error: 'Invalid token',
+          authRequired: true,
+          loginRequired: true,
+        });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        authenticated: true,
+        authRequired: true,
+      }, {
+        'set-cookie': serializeCookie('codex-pocket-token', submittedToken, {
+          httpOnly: true,
+          sameSite: 'Lax',
+          path: '/',
+          secure: shouldUseSecureCookies(req),
+          maxAge: 60 * 60 * 24 * 30,
+        }),
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/auth/logout' && req.method === 'POST') {
+    sendJson(res, 200, { ok: true }, {
+      'set-cookie': serializeCookie('codex-pocket-token', '', {
+        httpOnly: true,
+        sameSite: 'Lax',
+        path: '/',
+        secure: shouldUseSecureCookies(req),
+        maxAge: 0,
+      }),
     });
     return;
   }

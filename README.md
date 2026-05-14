@@ -45,6 +45,13 @@ See and lightly control a running Codex session from another browser without mir
    npm start
    ```
 
+   Or use the local account-aware CLI:
+
+   ```bash
+   npm run onboard
+   npm run run
+   ```
+
    Safer defaults in the current prototype:
    - bind host: `127.0.0.1`
    - browser port: `4782`
@@ -124,6 +131,72 @@ In other words: remote browser access can be generalized as "any trusted network
 - if you expose this beyond localhost, prefer a trusted private network or an authenticated private route
 - the current prototype is optimized for trusted personal/internal use, not hardened public internet exposure
 
+## Local process/account commands
+
+The project now includes a small local CLI for repeatable setup.
+
+### Run the current/default account
+
+```bash
+npm run run
+```
+
+### First-time onboarding
+
+```bash
+npm run onboard
+```
+
+This creates a local config under `run/accounts.json` (gitignored) and stores:
+- bind host
+- browser port
+- `CODEX_HOME`
+- Codex app-server listen URL
+- Codex app-server URL
+- optional shared auth token
+
+### Add another account
+
+```bash
+npm run account:add -- <account-name>
+```
+
+### Remove an account
+
+```bash
+npm run account:remove -- <account-name>
+```
+
+### List configured accounts
+
+```bash
+npm run account:list
+```
+
+### Show one account's details
+
+```bash
+npm run account:show -- <account-name>
+```
+
+### Change the default account
+
+```bash
+npm run account:set-default -- <account-name>
+```
+
+### Print the effective env for an account
+
+```bash
+npm run print-env -- <account-name>
+```
+
+### Run a quick preflight check
+
+```bash
+npm run doctor -- <account-name>
+```
+
 ## Architecture
 
 ### Host side
@@ -170,7 +243,7 @@ Phase 2:
 - Do **not** expose this prototype directly to the public internet without adding proper auth and transport protections.
 - Keep the Codex app-server bound locally when possible; `codex-pocket` can proxy browser interactions to it.
 - The safer default bind host is `127.0.0.1`; use `CODEX_POCKET_HOST=0.0.0.0` or another explicit address only when you intentionally want remote reachability.
-- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI will prompt for the shared token when the API requires it.
+- Set `CODEX_POCKET_AUTH_TOKEN` before opening access beyond localhost. The browser UI now shows a login screen and stores the authenticated session in an HTTP-only cookie.
 - Anyone who can reach the web UI and satisfy auth may be able to inspect transcripts and send control/input actions, so treat network exposure carefully.
 
 ## Recommendation

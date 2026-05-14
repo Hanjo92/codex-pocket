@@ -6,6 +6,16 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "cli": "node server/cli.js",
+    "run": "node server/cli.js run",
+    "onboard": "node server/cli.js onboard",
+    "doctor": "node server/cli.js doctor",
+    "print-env": "node server/cli.js print-env",
+    "account:add": "node server/cli.js account add",
+    "account:remove": "node server/cli.js account remove",
+    "account:list": "node server/cli.js account list",
+    "account:set-default": "node server/cli.js account set-default",
+    "account:show": "node server/cli.js account show"
   }
 }
