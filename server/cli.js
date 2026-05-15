@@ -112,10 +112,11 @@ Usage:
   node server/cli.js account set-default <account-name>
   node server/cli.js account show [account-name]
   node server/cli.js account list
-  node server/cli.js user add [username] [mode]
+  node server/cli.js user add [username] [mode] [role]
   node server/cli.js user remove <username>
   node server/cli.js user set-password <username>
   node server/cli.js user set-mode <username> <mode>
+  node server/cli.js user set-role <username> <role>
   node server/cli.js user list
 `);
 }
@@ -131,6 +132,19 @@ function normalizePermissionMode(mode = '') {
   if (normalized === 'comment' || normalized === 'comment-only' || normalized === 'comment_only' || normalized === 'input-only' || normalized === 'input_only') return 'input_only';
   if (normalized === 'control' || normalized === 'control-enabled' || normalized === 'control_enabled' || !normalized) return 'control';
   throw new Error(`Unknown permission mode: ${mode}. Use read_only, input_only, or control.`);
+}
+
+function normalizeUserRole(role = '') {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'owner') return 'owner';
+  if (normalized === 'admin') return 'admin';
+  if (normalized === 'member' || !normalized) return 'member';
+  throw new Error(`Unknown role: ${role}. Use owner, admin, or member.`);
+}
+
+function getUserRole(user, index = 0) {
+  if (user?.role) return normalizeUserRole(user.role);
+  return index === 0 ? 'owner' : 'member';
 }
 
 async function promptAccount(seedName = '') {
@@ -196,7 +210,7 @@ async function onboard() {
     console.log('\nNo login users found. Let\'s create the first one.');
     const { username, password } = await promptPasswordFlow('admin');
     const { salt, passwordHash } = hashPassword(password);
-    usersConfig.users.push({ username, salt, passwordHash, permissionMode: 'control', createdAtMs: Date.now(), updatedAtMs: Date.now() });
+    usersConfig.users.push({ username, salt, passwordHash, permissionMode: 'control', role: 'owner', createdAtMs: Date.now(), updatedAtMs: Date.now() });
     await saveUsersConfig(usersConfig);
     console.log(`Saved login user '${username}'.`);
     console.log(`Users config: ${usersPath}`);
@@ -351,15 +365,16 @@ async function printEnv(name = '') {
   for (const key of keys) console.log(`${key}=${env[key] || ''}`);
 }
 
-async function addUser(username = '', mode = 'control') {
+async function addUser(username = '', mode = 'control', role = 'member') {
   const config = await loadUsersConfig();
   const prompt = await promptPasswordFlow(username || '');
   if (findUser(config, prompt.username)) throw new Error(`User already exists: ${prompt.username}`);
   const permissionMode = normalizePermissionMode(mode);
+  const normalizedRole = normalizeUserRole(role);
   const { salt, passwordHash } = hashPassword(prompt.password);
-  config.users.push({ username: prompt.username, salt, passwordHash, permissionMode, createdAtMs: Date.now(), updatedAtMs: Date.now() });
+  config.users.push({ username: prompt.username, salt, passwordHash, permissionMode, role: normalizedRole, createdAtMs: Date.now(), updatedAtMs: Date.now() });
   await saveUsersConfig(config);
-  console.log(`Saved login user '${prompt.username}' (${permissionMode}).`);
+  console.log(`Saved login user '${prompt.username}' (${permissionMode}, ${normalizedRole}).`);
 }
 
 async function removeUser(username) {
@@ -404,14 +419,31 @@ async function setUserMode(username = '', mode = '') {
   console.log(`Updated permission mode for '${username}' to '${permissionMode}'.`);
 }
 
+async function setUserRole(username = '', role = '') {
+  if (!username) throw new Error('Username is required for set-role');
+  const normalizedRole = normalizeUserRole(role);
+  const config = await loadUsersConfig();
+  const user = findUser(config, username);
+  if (!user) throw new Error(`Unknown user: ${username}`);
+  const currentRole = getUserRole(user, config.users.findIndex((entry) => entry.username === username));
+  if (currentRole === 'owner' && normalizedRole !== 'owner') {
+    const ownerCount = config.users.filter((entry, index) => getUserRole(entry, index) === 'owner').length;
+    if (ownerCount <= 1) throw new Error('At least one owner account must remain.');
+  }
+  user.role = normalizedRole;
+  user.updatedAtMs = Date.now();
+  await saveUsersConfig(config);
+  console.log(`Updated role for '${username}' to '${normalizedRole}'.`);
+}
+
 async function listUsers() {
   const config = await loadUsersConfig();
   if (!config.users.length) {
     console.log('No login users configured.');
     return;
   }
-  for (const user of config.users) {
-    console.log(`- ${user.username} (${normalizePermissionMode(user.permissionMode)})`);
+  for (const [index, user] of config.users.entries()) {
+    console.log(`- ${user.username} (${normalizePermissionMode(user.permissionMode)}, ${getUserRole(user, index)})`);
   }
 }
 
@@ -438,12 +470,13 @@ async function main() {
   }
 
   if (command === 'user') {
-    if (subcommand === 'add') return addUser(rest[0] || '', rest[1] || 'control');
+    if (subcommand === 'add') return addUser(rest[0] || '', rest[1] || 'control', rest[2] || 'member');
     if (subcommand === 'remove') return removeUser(rest[0] || '');
     if (subcommand === 'set-password') return setUserPassword(rest[0] || '');
     if (subcommand === 'set-mode') return setUserMode(rest[0] || '', rest[1] || '');
+    if (subcommand === 'set-role') return setUserRole(rest[0] || '', rest[1] || '');
     if (subcommand === 'list') return listUsers();
-    throw new Error('Unknown user subcommand. Use add, remove, set-password, set-mode, or list.');
+    throw new Error('Unknown user subcommand. Use add, remove, set-password, set-mode, set-role, or list.');
   }
 
   throw new Error(`Unknown command: ${command}`);

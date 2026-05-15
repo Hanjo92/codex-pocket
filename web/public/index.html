@@ -661,7 +661,7 @@
       }
       .permission-user-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
         gap: 8px;
         align-items: center;
       }
@@ -1111,18 +1111,21 @@
           transcriptDensityAll: 'Show tools + agent notes',
           logout: 'Log out',
           logoutWithUser: 'Log out ({username})',
-          accessMode: 'Access: {mode}',
+          accessMode: 'Access: {role} · {mode}',
           permissionReadOnly: 'read-only',
           permissionInputOnly: 'input-only',
           permissionControl: 'control',
+          roleOwner: 'owner',
+          roleAdmin: 'admin',
+          roleMember: 'member',
           permissionHintReadOnly: 'This account can read threads only. Sending input and control actions are disabled.',
           permissionHintInputOnly: 'This account can send normal text input, but interrupt and terminal control are disabled.',
           permissionHintControl: 'This account can send input and use control actions.',
           sendBlockedByPermission: 'This account is in read-only mode, so sending input is disabled.',
           controlBlockedByPermission: 'This account cannot use interrupt or terminal controls in the current permission mode.',
-          permissionManagerTitle: 'Manage access modes',
-          permissionManagerSummaryMeta: 'control users only',
-          permissionManagerMeta: 'Change browser access levels for saved users on this host.',
+          permissionManagerTitle: 'Manage users',
+          permissionManagerSummaryMeta: 'owner/admin users only',
+          permissionManagerMeta: 'Owners can change roles and modes. Admins can change member access modes only.',
           permissionManagerLoading: 'Loading users…',
           permissionManagerEmpty: 'No saved users.',
           permissionManagerSave: 'Save',
@@ -1259,18 +1262,21 @@
           transcriptDensityAll: 'tool + agent note 보기',
           logout: '로그아웃',
           logoutWithUser: '로그아웃 ({username})',
-          accessMode: '권한: {mode}',
+          accessMode: '권한: {role} · {mode}',
           permissionReadOnly: '읽기 전용',
           permissionInputOnly: '입력 전용',
           permissionControl: '제어 가능',
+          roleOwner: 'owner',
+          roleAdmin: 'admin',
+          roleMember: 'member',
           permissionHintReadOnly: '이 계정은 스레드 읽기만 가능해. 입력 전송과 제어 동작은 막혀 있어.',
           permissionHintInputOnly: '이 계정은 일반 텍스트 입력은 보낼 수 있지만, interrupt와 터미널 제어는 막혀 있어.',
           permissionHintControl: '이 계정은 입력 전송과 제어 동작을 모두 사용할 수 있어.',
           sendBlockedByPermission: '이 계정은 읽기 전용 모드라서 입력 전송이 막혀 있어.',
           controlBlockedByPermission: '이 계정은 현재 권한 모드에서 interrupt/터미널 제어를 사용할 수 없어.',
-          permissionManagerTitle: '권한 모드 관리',
-          permissionManagerSummaryMeta: 'control 계정만 사용 가능',
-          permissionManagerMeta: '이 호스트에 저장된 사용자들의 브라우저 접근 권한을 바꿀 수 있어.',
+          permissionManagerTitle: '사용자 권한 관리',
+          permissionManagerSummaryMeta: 'owner/admin 계정만 사용 가능',
+          permissionManagerMeta: 'owner는 role과 mode를 바꿀 수 있고, admin은 member의 access mode만 바꿀 수 있어.',
           permissionManagerLoading: '사용자 목록 불러오는 중…',
           permissionManagerEmpty: '저장된 사용자가 없어.',
           permissionManagerSave: '저장',
@@ -1389,7 +1395,8 @@
       let authenticated = false;
       let authenticatedUsername = '';
       let authPermissionMode = 'control';
-      let authCapabilities = { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true };
+      let authRole = 'owner';
+      let authCapabilities = { mode: 'control', role: 'owner', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true, canManageRoles: true };
       let permissionManagerUsers = [];
       let permissionManagerBusyUser = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
@@ -1476,6 +1483,12 @@
         return t('permissionControl');
       }
 
+      function getRoleLabel(role = authRole) {
+        if (role === 'owner') return t('roleOwner');
+        if (role === 'admin') return t('roleAdmin');
+        return t('roleMember');
+      }
+
       function getPermissionHint(mode = authPermissionMode) {
         if (mode === 'read_only') return t('permissionHintReadOnly');
         if (mode === 'input_only') return t('permissionHintInputOnly');
@@ -1484,9 +1497,9 @@
 
       function renderAccessBadge() {
         if (!accessBadgeEl) return;
-        accessBadgeEl.textContent = t('accessMode', { mode: getPermissionLabel(authPermissionMode) });
+        accessBadgeEl.textContent = t('accessMode', { role: getRoleLabel(authRole), mode: getPermissionLabel(authPermissionMode) });
         accessBadgeEl.className = `access-badge ${authPermissionMode.replace('_', '-')}`;
-        accessBadgeEl.title = getPermissionHint(authPermissionMode);
+        accessBadgeEl.title = `${getRoleLabel(authRole)} · ${getPermissionHint(authPermissionMode)}`;
       }
 
       function renderPermissionManager() {
@@ -1503,15 +1516,24 @@
         }
         permissionManagerListEl.innerHTML = permissionManagerUsers.map((user) => {
           const busy = permissionManagerBusyUser === user.username;
+          const manageable = !!user.manageable;
+          const canEditRole = !!authCapabilities?.canManageRoles;
           return `
             <div class="permission-user-row">
-              <div class="permission-user-name">${escapeHtml(user.username)}</div>
-              <select data-permission-user="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>
+              <div class="permission-user-name">${escapeHtml(user.username)} · ${escapeHtml(getRoleLabel(user.role || 'member'))}</div>
+              <select data-permission-user="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
                 <option value="read_only" ${user.permissionMode === 'read_only' ? 'selected' : ''}>${escapeHtml(t('permissionReadOnly'))}</option>
                 <option value="input_only" ${user.permissionMode === 'input_only' ? 'selected' : ''}>${escapeHtml(t('permissionInputOnly'))}</option>
                 <option value="control" ${user.permissionMode === 'control' ? 'selected' : ''}>${escapeHtml(t('permissionControl'))}</option>
               </select>
-              <button type="button" class="secondary" data-permission-save="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>${escapeHtml(busy ? t('permissionManagerSaving') : t('permissionManagerSave'))}</button>
+              ${canEditRole ? `
+                <select data-role-user="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>
+                  <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>${escapeHtml(t('roleOwner'))}</option>
+                  <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>${escapeHtml(t('roleAdmin'))}</option>
+                  <option value="member" ${user.role === 'member' ? 'selected' : ''}>${escapeHtml(t('roleMember'))}</option>
+                </select>
+              ` : ''}
+              <button type="button" class="secondary" data-permission-save="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(busy ? t('permissionManagerSaving') : t('permissionManagerSave'))}</button>
             </div>
           `;
         }).join('');
@@ -1537,10 +1559,23 @@
         }
       }
 
-      async function savePermissionMode(username, permissionMode) {
+      function buildCapabilities(mode = 'control', role = 'member') {
+        return {
+          mode,
+          role,
+          canSendInput: mode === 'input_only' || mode === 'control',
+          canInterrupt: mode === 'control',
+          canUseTerminalControl: mode === 'control',
+          canManageUsers: mode === 'control' && (role === 'owner' || role === 'admin'),
+          canManageRoles: mode === 'control' && role === 'owner',
+        };
+      }
+
+      async function savePermissionMode(username, permissionMode, role = null) {
         permissionManagerBusyUser = username;
         renderPermissionManager();
         try {
+          let nextUser = null;
           const response = await apiFetch('/api/users/mode', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1550,20 +1585,29 @@
           if (!response.ok) {
             throw new Error(data.error || 'Permission update failed');
           }
+          nextUser = data.user || { username, permissionMode };
+          if (role && authCapabilities?.canManageRoles && role !== nextUser.role) {
+            const roleResponse = await apiFetch('/api/users/role', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ username, role }),
+            });
+            const roleData = await roleResponse.json();
+            if (!roleResponse.ok) {
+              throw new Error(roleData.error || 'Role update failed');
+            }
+            nextUser = roleData.user || nextUser;
+          }
           permissionManagerUsers = permissionManagerUsers.map((user) => user.username === username
-            ? { ...user, permissionMode: data.user?.permissionMode || permissionMode }
+            ? { ...user, ...nextUser }
             : user);
           if (username === authenticatedUsername) {
-            authPermissionMode = data.user?.permissionMode || permissionMode;
-            authCapabilities = {
-              mode: authPermissionMode,
-              canSendInput: authPermissionMode === 'input_only' || authPermissionMode === 'control',
-              canInterrupt: authPermissionMode === 'control',
-              canUseTerminalControl: authPermissionMode === 'control',
-              canManageUsers: authPermissionMode === 'control',
-            };
+            authPermissionMode = nextUser.permissionMode || permissionMode;
+            authRole = nextUser.role || authRole;
+            authCapabilities = buildCapabilities(authPermissionMode, authRole);
           }
           inputStatusEl.textContent = t('permissionManagerSaved');
+          await loadPermissionManager();
         } catch (error) {
           inputStatusEl.textContent = t('permissionManagerSaveFailed', { message: error.message });
         } finally {
@@ -1632,7 +1676,7 @@
         if (langSelectEl) langSelectEl.value = currentLang;
         if (authLangSelectEl) authLangSelectEl.value = currentLang;
         applyStaticTranslations();
-        setAuthUiState(authenticated, authRequired, authenticatedUsername, authPermissionMode, authCapabilities);
+        setAuthUiState(authenticated, authRequired, authenticatedUsername, authPermissionMode, authRole, authCapabilities);
         if (!rerender) return;
         renderStickyContext(lastActiveThread);
         if (lastActiveThread) {
@@ -1895,12 +1939,13 @@
         }
       }
 
-      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '', nextPermissionMode = 'control', nextCapabilities = null) {
+      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '', nextPermissionMode = 'control', nextRole = 'owner', nextCapabilities = null) {
         authenticated = !!nextAuthenticated;
         authRequired = !!nextAuthRequired;
         authenticatedUsername = nextUsername || '';
         authPermissionMode = nextPermissionMode || 'control';
-        authCapabilities = nextCapabilities || { mode: authPermissionMode, canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true };
+        authRole = nextRole || 'owner';
+        authCapabilities = nextCapabilities || buildCapabilities(authPermissionMode, authRole);
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
         authOverlayEl.classList.toggle('visible', locked);
@@ -1921,7 +1966,7 @@
       async function refreshAuthSession() {
         const response = await fetch('/auth/session', { cache: 'no-store' });
         const data = await response.json();
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.capabilities || null);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.capabilities || null);
         return data;
       }
 
@@ -1936,7 +1981,7 @@
           throw new Error(data.error || t('loginFailed'));
         }
         authErrorEl.textContent = '';
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.capabilities || null);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.capabilities || null);
         return data;
       }
 
@@ -1944,7 +1989,7 @@
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
         permissionManagerUsers = [];
-        setAuthUiState(false, authRequired, '', 'control', { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true });
+        setAuthUiState(false, authRequired, '', 'control', 'owner', buildCapabilities('control', 'owner'));
       }
 
       async function apiFetch(input, init = {}) {
@@ -1954,7 +1999,7 @@
         });
 
         if (response.status === 401) {
-          setAuthUiState(false, true);
+          setAuthUiState(false, true, '', 'control', 'owner', buildCapabilities('control', 'owner'));
         }
 
         return response;
@@ -2881,8 +2926,9 @@
         if (!button) return;
         const username = button.dataset.permissionSave || '';
         const select = permissionManagerListEl.querySelector(`[data-permission-user="${CSS.escape(username)}"]`);
+        const roleSelect = permissionManagerListEl.querySelector(`[data-role-user="${CSS.escape(username)}"]`);
         if (!username || !select) return;
-        await savePermissionMode(username, select.value || 'control');
+        await savePermissionMode(username, select.value || 'control', roleSelect ? (roleSelect.value || 'member') : null);
       });
 
       transcriptDensityEl.addEventListener('change', () => {

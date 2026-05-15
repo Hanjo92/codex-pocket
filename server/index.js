@@ -23,6 +23,7 @@ const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS
 const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS || 60 * 60 * 24 * 30);
 const sessionCookieName = 'codex-pocket-session';
 const DEFAULT_PERMISSION_MODE = 'control';
+const DEFAULT_USER_ROLE = 'member';
 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
@@ -91,19 +92,53 @@ function normalizePermissionMode(mode = '') {
   return DEFAULT_PERMISSION_MODE;
 }
 
-function getPermissionCapabilities(mode = DEFAULT_PERMISSION_MODE) {
+function normalizeUserRole(role = '') {
+  const normalized = String(role || '').trim().toLowerCase();
+  if (normalized === 'owner') return 'owner';
+  if (normalized === 'admin') return 'admin';
+  if (normalized === 'member' || !normalized) return DEFAULT_USER_ROLE;
+  return DEFAULT_USER_ROLE;
+}
+
+function getUserRole(user = null, users = []) {
+  if (user?.role) return normalizeUserRole(user.role);
+  if (user && users[0] && users[0].username === user.username) return 'owner';
+  return DEFAULT_USER_ROLE;
+}
+
+function getPermissionCapabilities(mode = DEFAULT_PERMISSION_MODE, role = DEFAULT_USER_ROLE) {
   const normalized = normalizePermissionMode(mode);
+  const normalizedRole = normalizeUserRole(role);
   return {
     mode: normalized,
+    role: normalizedRole,
     canSendInput: normalized === 'input_only' || normalized === 'control',
     canInterrupt: normalized === 'control',
     canUseTerminalControl: normalized === 'control',
-    canManageUsers: normalized === 'control',
+    canManageUsers: normalized === 'control' && (normalizedRole === 'owner' || normalizedRole === 'admin'),
+    canManageRoles: normalized === 'control' && normalizedRole === 'owner',
   };
 }
 
 function findUserByUsername(users = [], username = '') {
   return users.find((entry) => entry.username === username) || null;
+}
+
+function sanitizeUser(user = null, users = []) {
+  return {
+    username: user?.username || '',
+    permissionMode: normalizePermissionMode(user?.permissionMode),
+    role: getUserRole(user, users),
+  };
+}
+
+function canManageTargetUser(authState, targetUser, users = []) {
+  const actorRole = normalizeUserRole(authState?.capabilities?.role || authState?.role || '');
+  const targetRole = getUserRole(targetUser, users);
+  if (!authState?.capabilities?.canManageUsers) return false;
+  if (actorRole === 'owner') return true;
+  if (actorRole === 'admin') return targetRole === 'member';
+  return false;
 }
 
 function hashPassword(password, salt) {
@@ -143,25 +178,27 @@ async function getAuthState(req) {
   const users = await loadUsers();
   const authRequired = users.length > 0;
   if (!authRequired) {
-    const capabilities = getPermissionCapabilities(DEFAULT_PERMISSION_MODE);
-    return { authRequired: false, authenticated: true, username: null, sessionId: null, permissionMode: capabilities.mode, capabilities };
+    const capabilities = getPermissionCapabilities(DEFAULT_PERMISSION_MODE, 'owner');
+    return { authRequired: false, authenticated: true, username: null, sessionId: null, permissionMode: capabilities.mode, role: capabilities.role, capabilities };
   }
   const session = getSession(req);
   if (!session) {
-    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, capabilities: null };
+    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, role: null, capabilities: null };
   }
   const user = findUserByUsername(users, session.username);
   if (!user) {
     authSessions.delete(session.sessionId);
-    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, capabilities: null };
+    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, role: null, capabilities: null };
   }
-  const capabilities = getPermissionCapabilities(user.permissionMode);
+  const role = getUserRole(user, users);
+  const capabilities = getPermissionCapabilities(user.permissionMode, role);
   return {
     authRequired: true,
     authenticated: true,
     username: session.username,
     sessionId: session.sessionId,
     permissionMode: capabilities.mode,
+    role,
     capabilities,
   };
 }
@@ -182,10 +219,13 @@ function sendPermissionDenied(res, authState, capability) {
   sendJson(res, 403, {
     error: capability === 'canSendInput'
       ? 'This account is not allowed to send input in the current permission mode.'
-      : 'This account is not allowed to use control actions in the current permission mode.',
+      : capability === 'canManageUsers' || capability === 'canManageRoles'
+        ? 'This account is not allowed to manage users in the current role/mode.'
+        : 'This account is not allowed to use control actions in the current permission mode.',
     permissionDenied: true,
     permissionMode: authState?.permissionMode || DEFAULT_PERMISSION_MODE,
-    capabilities: authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE),
+    role: authState?.role || DEFAULT_USER_ROLE,
+    capabilities: authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE, DEFAULT_USER_ROLE),
   });
 }
 
@@ -1135,6 +1175,7 @@ const server = http.createServer(async (req, res) => {
       authRequired: state.authRequired,
       username: state.username,
       permissionMode: state.permissionMode,
+      role: state.role,
       capabilities: state.capabilities,
     });
     return;
@@ -1160,13 +1201,15 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const sessionId = createSession(username);
-      const capabilities = getPermissionCapabilities(user.permissionMode);
+      const role = getUserRole(user, users);
+      const capabilities = getPermissionCapabilities(user.permissionMode, role);
       sendJson(res, 200, {
         ok: true,
         authenticated: true,
         authRequired: true,
         username,
         permissionMode: capabilities.mode,
+        role,
         capabilities,
       }, {
         'set-cookie': serializeCookie(sessionCookieName, sessionId, {
@@ -1246,8 +1289,8 @@ const server = http.createServer(async (req, res) => {
       const users = await loadUsers();
       sendJson(res, 200, {
         users: users.map((user) => ({
-          username: user.username,
-          permissionMode: normalizePermissionMode(user.permissionMode),
+          ...sanitizeUser(user, users),
+          manageable: canManageTargetUser(authState, user, users),
         })),
       });
     } catch (error) {
@@ -1273,15 +1316,52 @@ const server = http.createServer(async (req, res) => {
       if (!user) {
         throw createError(`Unknown user: ${username}`, 404);
       }
+      if (!canManageTargetUser(authState, user, users)) {
+        throw createError(`You cannot manage ${username}`, 403);
+      }
       user.permissionMode = permissionMode;
       user.updatedAtMs = Date.now();
       await saveUsers(users);
       sendJson(res, 200, {
         ok: true,
-        user: {
-          username: user.username,
-          permissionMode,
-        },
+        user: sanitizeUser(user, users),
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/users/role' && req.method === 'POST') {
+    try {
+      if (!requireCapability(res, authState, 'canManageRoles')) return;
+      const body = await readJsonBody(req);
+      const username = String(body.username || '').trim();
+      const role = normalizeUserRole(body.role || '');
+      if (!username) {
+        throw createError('Username is required', 400);
+      }
+      const users = await loadUsers();
+      const user = findUserByUsername(users, username);
+      if (!user) {
+        throw createError(`Unknown user: ${username}`, 404);
+      }
+      const currentRole = getUserRole(user, users);
+      if (currentRole === 'owner' && role !== 'owner') {
+        const ownerCount = users.filter((entry) => getUserRole(entry, users) === 'owner').length;
+        if (ownerCount <= 1) {
+          throw createError('At least one owner account must remain.', 409);
+        }
+      }
+      user.role = role;
+      user.updatedAtMs = Date.now();
+      await saveUsers(users);
+      sendJson(res, 200, {
+        ok: true,
+        user: sanitizeUser(user, users),
       });
     } catch (error) {
       sendJson(res, error.statusCode || 500, {
