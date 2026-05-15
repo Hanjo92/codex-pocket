@@ -112,9 +112,10 @@ Usage:
   node server/cli.js account set-default <account-name>
   node server/cli.js account show [account-name]
   node server/cli.js account list
-  node server/cli.js user add [username]
+  node server/cli.js user add [username] [mode]
   node server/cli.js user remove <username>
   node server/cli.js user set-password <username>
+  node server/cli.js user set-mode <username> <mode>
   node server/cli.js user list
 `);
 }
@@ -122,6 +123,14 @@ Usage:
 function hashPassword(password, salt = randomBytes(16).toString('hex')) {
   const passwordHash = scryptSync(password, salt, 64).toString('hex');
   return { salt, passwordHash };
+}
+
+function normalizePermissionMode(mode = '') {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === 'read-only' || normalized === 'readonly' || normalized === 'read_only') return 'read_only';
+  if (normalized === 'comment' || normalized === 'comment-only' || normalized === 'comment_only' || normalized === 'input-only' || normalized === 'input_only') return 'input_only';
+  if (normalized === 'control' || normalized === 'control-enabled' || normalized === 'control_enabled' || !normalized) return 'control';
+  throw new Error(`Unknown permission mode: ${mode}. Use read_only, input_only, or control.`);
 }
 
 async function promptAccount(seedName = '') {
@@ -187,7 +196,7 @@ async function onboard() {
     console.log('\nNo login users found. Let\'s create the first one.');
     const { username, password } = await promptPasswordFlow('admin');
     const { salt, passwordHash } = hashPassword(password);
-    usersConfig.users.push({ username, salt, passwordHash, createdAtMs: Date.now(), updatedAtMs: Date.now() });
+    usersConfig.users.push({ username, salt, passwordHash, permissionMode: 'control', createdAtMs: Date.now(), updatedAtMs: Date.now() });
     await saveUsersConfig(usersConfig);
     console.log(`Saved login user '${username}'.`);
     console.log(`Users config: ${usersPath}`);
@@ -342,14 +351,15 @@ async function printEnv(name = '') {
   for (const key of keys) console.log(`${key}=${env[key] || ''}`);
 }
 
-async function addUser(username = '') {
+async function addUser(username = '', mode = 'control') {
   const config = await loadUsersConfig();
   const prompt = await promptPasswordFlow(username || '');
   if (findUser(config, prompt.username)) throw new Error(`User already exists: ${prompt.username}`);
+  const permissionMode = normalizePermissionMode(mode);
   const { salt, passwordHash } = hashPassword(prompt.password);
-  config.users.push({ username: prompt.username, salt, passwordHash, createdAtMs: Date.now(), updatedAtMs: Date.now() });
+  config.users.push({ username: prompt.username, salt, passwordHash, permissionMode, createdAtMs: Date.now(), updatedAtMs: Date.now() });
   await saveUsersConfig(config);
-  console.log(`Saved login user '${prompt.username}'.`);
+  console.log(`Saved login user '${prompt.username}' (${permissionMode}).`);
 }
 
 async function removeUser(username) {
@@ -382,6 +392,18 @@ async function setUserPassword(username = '') {
   console.log(`Updated password for '${prompt.username}'.`);
 }
 
+async function setUserMode(username = '', mode = '') {
+  if (!username) throw new Error('Username is required for set-mode');
+  const permissionMode = normalizePermissionMode(mode);
+  const config = await loadUsersConfig();
+  const user = findUser(config, username);
+  if (!user) throw new Error(`Unknown user: ${username}`);
+  user.permissionMode = permissionMode;
+  user.updatedAtMs = Date.now();
+  await saveUsersConfig(config);
+  console.log(`Updated permission mode for '${username}' to '${permissionMode}'.`);
+}
+
 async function listUsers() {
   const config = await loadUsersConfig();
   if (!config.users.length) {
@@ -389,7 +411,7 @@ async function listUsers() {
     return;
   }
   for (const user of config.users) {
-    console.log(`- ${user.username}`);
+    console.log(`- ${user.username} (${normalizePermissionMode(user.permissionMode)})`);
   }
 }
 
@@ -416,11 +438,12 @@ async function main() {
   }
 
   if (command === 'user') {
-    if (subcommand === 'add') return addUser(rest[0] || '');
+    if (subcommand === 'add') return addUser(rest[0] || '', rest[1] || 'control');
     if (subcommand === 'remove') return removeUser(rest[0] || '');
     if (subcommand === 'set-password') return setUserPassword(rest[0] || '');
+    if (subcommand === 'set-mode') return setUserMode(rest[0] || '', rest[1] || '');
     if (subcommand === 'list') return listUsers();
-    throw new Error('Unknown user subcommand. Use add, remove, set-password, or list.');
+    throw new Error('Unknown user subcommand. Use add, remove, set-password, set-mode, or list.');
   }
 
   throw new Error(`Unknown command: ${command}`);

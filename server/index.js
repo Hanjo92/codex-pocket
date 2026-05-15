@@ -22,6 +22,7 @@ const inputMaxBytes = Number(process.env.CODEX_POCKET_INPUT_MAX_BYTES || 16 * 10
 const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS || 1500);
 const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS || 60 * 60 * 24 * 30);
 const sessionCookieName = 'codex-pocket-session';
+const DEFAULT_PERMISSION_MODE = 'control';
 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
@@ -78,6 +79,28 @@ async function loadUsers() {
   }
 }
 
+function normalizePermissionMode(mode = '') {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === 'read-only' || normalized === 'readonly' || normalized === 'read_only') return 'read_only';
+  if (normalized === 'comment' || normalized === 'comment-only' || normalized === 'comment_only' || normalized === 'input-only' || normalized === 'input_only') return 'input_only';
+  if (normalized === 'control' || normalized === 'control-enabled' || normalized === 'control_enabled') return 'control';
+  return DEFAULT_PERMISSION_MODE;
+}
+
+function getPermissionCapabilities(mode = DEFAULT_PERMISSION_MODE) {
+  const normalized = normalizePermissionMode(mode);
+  return {
+    mode: normalized,
+    canSendInput: normalized === 'input_only' || normalized === 'control',
+    canInterrupt: normalized === 'control',
+    canUseTerminalControl: normalized === 'control',
+  };
+}
+
+function findUserByUsername(users = [], username = '') {
+  return users.find((entry) => entry.username === username) || null;
+}
+
 function hashPassword(password, salt) {
   return scryptSync(password, salt, 64);
 }
@@ -115,13 +138,27 @@ async function getAuthState(req) {
   const users = await loadUsers();
   const authRequired = users.length > 0;
   if (!authRequired) {
-    return { authRequired: false, authenticated: true, username: null, sessionId: null };
+    const capabilities = getPermissionCapabilities(DEFAULT_PERMISSION_MODE);
+    return { authRequired: false, authenticated: true, username: null, sessionId: null, permissionMode: capabilities.mode, capabilities };
   }
   const session = getSession(req);
   if (!session) {
-    return { authRequired: true, authenticated: false, username: null, sessionId: null };
+    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, capabilities: null };
   }
-  return { authRequired: true, authenticated: true, username: session.username, sessionId: session.sessionId };
+  const user = findUserByUsername(users, session.username);
+  if (!user) {
+    authSessions.delete(session.sessionId);
+    return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, capabilities: null };
+  }
+  const capabilities = getPermissionCapabilities(user.permissionMode);
+  return {
+    authRequired: true,
+    authenticated: true,
+    username: session.username,
+    sessionId: session.sessionId,
+    permissionMode: capabilities.mode,
+    capabilities,
+  };
 }
 
 async function requireAuth(req, res) {
@@ -134,6 +171,23 @@ async function requireAuth(req, res) {
     hint: 'Sign in with a local username and password.',
   });
   return null;
+}
+
+function sendPermissionDenied(res, authState, capability) {
+  sendJson(res, 403, {
+    error: capability === 'canSendInput'
+      ? 'This account is not allowed to send input in the current permission mode.'
+      : 'This account is not allowed to use control actions in the current permission mode.',
+    permissionDenied: true,
+    permissionMode: authState?.permissionMode || DEFAULT_PERMISSION_MODE,
+    capabilities: authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE),
+  });
+}
+
+function requireCapability(res, authState, capability) {
+  if (authState?.capabilities?.[capability]) return true;
+  sendPermissionDenied(res, authState, capability);
+  return false;
 }
 
 function normalizeJsonRpcError(error) {
@@ -1075,6 +1129,8 @@ const server = http.createServer(async (req, res) => {
       authenticated: state.authenticated,
       authRequired: state.authRequired,
       username: state.username,
+      permissionMode: state.permissionMode,
+      capabilities: state.capabilities,
     });
     return;
   }
@@ -1089,7 +1145,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJsonBody(req);
       const username = String(body.username || '').trim();
       const password = String(body.password || '');
-      const user = users.find((entry) => entry.username === username);
+      const user = findUserByUsername(users, username);
       if (!user || !password || !verifyPassword(password, user)) {
         sendJson(res, 401, {
           error: 'Invalid username or password',
@@ -1099,11 +1155,14 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       const sessionId = createSession(username);
+      const capabilities = getPermissionCapabilities(user.permissionMode);
       sendJson(res, 200, {
         ok: true,
         authenticated: true,
         authRequired: true,
         username,
+        permissionMode: capabilities.mode,
+        capabilities,
       }, {
         'set-cookie': serializeCookie(sessionCookieName, sessionId, {
           httpOnly: true,
@@ -1138,8 +1197,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  let authState = null;
   if (url.pathname.startsWith('/api/')) {
-    const authState = await requireAuth(req, res);
+    authState = await requireAuth(req, res);
     if (!authState) return;
   }
 
@@ -1177,6 +1237,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/input' && req.method === 'POST') {
     try {
+      if (!requireCapability(res, authState, 'canSendInput')) return;
       const body = await readJsonBody(req);
       const result = await sendInputToThread(body.threadId, body.text);
       sendJson(res, 200, result);
@@ -1203,6 +1264,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/interrupt' && req.method === 'POST') {
     try {
+      if (!requireCapability(res, authState, 'canInterrupt')) return;
       const body = await readJsonBody(req);
       const result = await interruptThread(body.threadId, body.turnId);
       sendJson(res, 200, result);
@@ -1217,6 +1279,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/terminal-control' && req.method === 'POST') {
     try {
+      if (!requireCapability(res, authState, 'canUseTerminalControl')) return;
       const body = await readJsonBody(req);
       const result = await sendTerminalControl(body.threadId, body.action, body.turnId);
       sendJson(res, 200, result);

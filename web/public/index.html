@@ -520,6 +520,29 @@
         gap: 8px;
         flex-wrap: wrap;
       }
+      .access-badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 11px;
+        font-weight: 700;
+        background: rgba(255,255,255,0.06);
+        color: var(--muted);
+        border: 1px solid var(--line);
+      }
+      .access-badge.read-only {
+        background: rgba(148, 163, 184, 0.14);
+        color: #cbd5e1;
+      }
+      .access-badge.input-only {
+        background: rgba(250, 204, 21, 0.14);
+        color: #fde68a;
+      }
+      .access-badge.control {
+        background: rgba(34, 197, 94, 0.16);
+        color: #9ae6b4;
+      }
       .viewer-actions button.secondary {
         background: var(--panel-2);
         color: var(--text);
@@ -888,6 +911,7 @@
               <option value="en">English</option>
               <option value="ko">한국어</option>
             </select>
+            <span id="accessBadge" class="access-badge control">Access: control</span>
             <button id="logoutBtn" class="secondary" type="button" style="display:none">Log out</button>
           </div>
           <div class="status muted" id="status">Preparing connection…</div>
@@ -979,6 +1003,7 @@
       const authTitleEl = document.getElementById('authTitle');
       const authBodyEl = document.getElementById('authBody');
       const authSubmitBtn = document.getElementById('authSubmitBtn');
+      const accessBadgeEl = document.getElementById('accessBadge');
       const authUsernameInputEl = document.getElementById('authUsernameInput');
       const authPasswordInputEl = document.getElementById('authPasswordInput');
       const authErrorEl = document.getElementById('authError');
@@ -1017,6 +1042,15 @@
           transcriptDensityAll: 'Show tools + agent notes',
           logout: 'Log out',
           logoutWithUser: 'Log out ({username})',
+          accessMode: 'Access: {mode}',
+          permissionReadOnly: 'read-only',
+          permissionInputOnly: 'input-only',
+          permissionControl: 'control',
+          permissionHintReadOnly: 'This account can read threads only. Sending input and control actions are disabled.',
+          permissionHintInputOnly: 'This account can send normal text input, but interrupt and terminal control are disabled.',
+          permissionHintControl: 'This account can send input and use control actions.',
+          sendBlockedByPermission: 'This account is in read-only mode, so sending input is disabled.',
+          controlBlockedByPermission: 'This account cannot use interrupt or terminal controls in the current permission mode.',
           preparingConnection: 'Preparing connection…',
           inputPlaceholder: 'Type input to send to the selected Codex thread',
           terminalWaiting: 'No terminal input target',
@@ -1147,6 +1181,15 @@
           transcriptDensityAll: 'tool + agent note 보기',
           logout: '로그아웃',
           logoutWithUser: '로그아웃 ({username})',
+          accessMode: '권한: {mode}',
+          permissionReadOnly: '읽기 전용',
+          permissionInputOnly: '입력 전용',
+          permissionControl: '제어 가능',
+          permissionHintReadOnly: '이 계정은 스레드 읽기만 가능해. 입력 전송과 제어 동작은 막혀 있어.',
+          permissionHintInputOnly: '이 계정은 일반 텍스트 입력은 보낼 수 있지만, interrupt와 터미널 제어는 막혀 있어.',
+          permissionHintControl: '이 계정은 입력 전송과 제어 동작을 모두 사용할 수 있어.',
+          sendBlockedByPermission: '이 계정은 읽기 전용 모드라서 입력 전송이 막혀 있어.',
+          controlBlockedByPermission: '이 계정은 현재 권한 모드에서 interrupt/터미널 제어를 사용할 수 없어.',
           preparingConnection: '연결 준비 중…',
           inputPlaceholder: '선택한 Codex 스레드에 보낼 입력을 적어줘',
           terminalWaiting: '터미널 입력 대기 중 아님',
@@ -1258,6 +1301,8 @@
       let authRequired = false;
       let authenticated = false;
       let authenticatedUsername = '';
+      let authPermissionMode = 'control';
+      let authCapabilities = { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true };
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
@@ -1336,6 +1381,25 @@
         outputEl.innerHTML = `<div class="empty">${escapeHtml(t('loginToLoad'))}</div>`;
       }
 
+      function getPermissionLabel(mode = authPermissionMode) {
+        if (mode === 'read_only') return t('permissionReadOnly');
+        if (mode === 'input_only') return t('permissionInputOnly');
+        return t('permissionControl');
+      }
+
+      function getPermissionHint(mode = authPermissionMode) {
+        if (mode === 'read_only') return t('permissionHintReadOnly');
+        if (mode === 'input_only') return t('permissionHintInputOnly');
+        return t('permissionHintControl');
+      }
+
+      function renderAccessBadge() {
+        if (!accessBadgeEl) return;
+        accessBadgeEl.textContent = t('accessMode', { mode: getPermissionLabel(authPermissionMode) });
+        accessBadgeEl.className = `access-badge ${authPermissionMode.replace('_', '-')}`;
+        accessBadgeEl.title = getPermissionHint(authPermissionMode);
+      }
+
       function applyStaticTranslations() {
         document.documentElement.lang = currentLang;
         stickyContextTitleEl.textContent = t('loadingProjectsAndThreads');
@@ -1383,6 +1447,7 @@
         authUsernameInputEl.placeholder = t('usernamePlaceholder');
         authPasswordInputEl.placeholder = t('passwordPlaceholder');
         authSubmitBtn.textContent = t('signIn');
+        renderAccessBadge();
         updateProjectChipsVisibility();
       }
 
@@ -1392,7 +1457,7 @@
         if (langSelectEl) langSelectEl.value = currentLang;
         if (authLangSelectEl) authLangSelectEl.value = currentLang;
         applyStaticTranslations();
-        setAuthUiState(authenticated, authRequired, authenticatedUsername);
+        setAuthUiState(authenticated, authRequired, authenticatedUsername, authPermissionMode, authCapabilities);
         if (!rerender) return;
         renderStickyContext(lastActiveThread);
         if (lastActiveThread) {
@@ -1655,16 +1720,23 @@
         }
       }
 
-      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '') {
+      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '', nextPermissionMode = 'control', nextCapabilities = null) {
         authenticated = !!nextAuthenticated;
         authRequired = !!nextAuthRequired;
         authenticatedUsername = nextUsername || '';
+        authPermissionMode = nextPermissionMode || 'control';
+        authCapabilities = nextCapabilities || { mode: authPermissionMode, canSendInput: true, canInterrupt: true, canUseTerminalControl: true };
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
         authOverlayEl.classList.toggle('visible', locked);
         authOverlayEl.setAttribute('aria-hidden', locked ? 'false' : 'true');
         logoutBtn.style.display = authRequired ? '' : 'none';
         logoutBtn.textContent = authenticatedUsername ? t('logoutWithUser', { username: authenticatedUsername }) : t('logout');
+        renderAccessBadge();
+        updateControlState();
+        if (!locked && !sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          inputStatusEl.textContent = getPermissionHint(authPermissionMode);
+        }
         if (locked) {
           setTimeout(() => authUsernameInputEl.focus(), 0);
         }
@@ -1673,7 +1745,7 @@
       async function refreshAuthSession() {
         const response = await fetch('/auth/session', { cache: 'no-store' });
         const data = await response.json();
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '');
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.capabilities || null);
         return data;
       }
 
@@ -1688,14 +1760,14 @@
           throw new Error(data.error || t('loginFailed'));
         }
         authErrorEl.textContent = '';
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '');
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.capabilities || null);
         return data;
       }
 
       async function logoutSession() {
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
-        setAuthUiState(false, authRequired, '');
+        setAuthUiState(false, authRequired, '', 'control', { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true });
       }
 
       async function apiFetch(input, init = {}) {
@@ -1889,8 +1961,16 @@
       function renderTerminalState() {
         const terminal = lastQuickControls?.terminal || { available: false };
         const ready = !!terminal.available;
+        const canControl = !!authCapabilities?.canInterrupt;
         terminalStateBadgeEl.textContent = ready ? t('terminalReady') : t('terminalWaiting');
-        terminalStateBadgeEl.className = `terminal-state-badge ${ready ? 'ready' : 'waiting'}`;
+        terminalStateBadgeEl.className = `terminal-state-badge ${ready && canControl ? 'ready' : 'waiting'}`;
+
+        if (!canControl) {
+          terminalStateHintEl.textContent = t('controlBlockedByPermission');
+          terminalStateMetaEl.textContent = getPermissionHint(authPermissionMode);
+          terminalStateCardEl.style.borderColor = 'var(--line)';
+          return;
+        }
 
         if (ready) {
           terminalStateHintEl.textContent = t('terminalReadyHint');
@@ -1910,12 +1990,14 @@
       function updateControlState() {
         const busy = sendingInput || interruptingTurn || sendingTerminalControl;
         const terminalAvailable = !!lastQuickControls?.terminal?.available;
-        inputBoxEl.disabled = sendingInput;
-        sendInputBtn.disabled = busy;
-        interruptBtn.disabled = busy || !selectedThreadId;
-        enterBtn.disabled = busy || !terminalAvailable;
-        escBtn.disabled = busy || !terminalAvailable;
-        ctrlCBtn.disabled = busy || !terminalAvailable;
+        const canSendInput = !!authCapabilities?.canSendInput;
+        const canControl = !!authCapabilities?.canInterrupt;
+        inputBoxEl.disabled = sendingInput || !canSendInput;
+        sendInputBtn.disabled = busy || !canSendInput;
+        interruptBtn.disabled = busy || !selectedThreadId || !canControl;
+        enterBtn.disabled = busy || !terminalAvailable || !canControl;
+        escBtn.disabled = busy || !terminalAvailable || !canControl;
+        ctrlCBtn.disabled = busy || !terminalAvailable || !canControl;
         sendInputBtn.textContent = sendingInput ? t('sending') : t('send');
         interruptBtn.textContent = interruptingTurn ? t('interruptBusy') : t('interrupt');
         renderTerminalState();
@@ -2397,6 +2479,10 @@
 
       async function sendInput() {
         const text = inputBoxEl.value.trim();
+        if (!authCapabilities?.canSendInput) {
+          inputStatusEl.textContent = t('sendBlockedByPermission');
+          return;
+        }
         if (!selectedThreadId) {
           inputStatusEl.textContent = t('selectThreadToSend');
           return;
@@ -2435,6 +2521,10 @@
       }
 
       async function sendTerminalControl(action, label) {
+        if (!authCapabilities?.canInterrupt) {
+          inputStatusEl.textContent = t('controlBlockedByPermission');
+          return;
+        }
         if (!selectedThreadId) {
           inputStatusEl.textContent = t('selectThreadFirst');
           return;
@@ -2473,6 +2563,10 @@
       }
 
       async function interruptTurn() {
+        if (!authCapabilities?.canInterrupt) {
+          inputStatusEl.textContent = t('controlBlockedByPermission');
+          return;
+        }
         if (!selectedThreadId) {
           inputStatusEl.textContent = t('selectThreadToInterrupt');
           return;
