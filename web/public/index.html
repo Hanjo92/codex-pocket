@@ -2895,28 +2895,104 @@
           .replace(/^[-*•]\s+/, '')
           .replace(/^\d+[.)]\s+/, '')
           .replace(/`+/g, '')
+          .replace(/[()[\]{}:;,]+/g, ' ')
           .replace(/\s+/g, ' ')
           .trim()
           .toLowerCase();
       }
 
       function getComparisonUnits(text = '') {
-        return String(text)
-          .split(/\n+/)
-          .map((line) => line.trim())
+        const value = String(text || '').trim();
+        if (!value) return [];
+        return value
+          .split(/\n{2,}|\n(?=[-*•]\s)|\n(?=\d+[.)]\s)/)
+          .map((chunk) => chunk.trim())
+          .flatMap((chunk) => {
+            if (chunk.includes('\n') && !/^```/.test(chunk)) {
+              return chunk.split(/\n+/).map((line) => line.trim());
+            }
+            return [chunk];
+          })
           .filter(Boolean)
           .filter((line) => line.length > 8)
           .filter((line) => !/^```/.test(line))
           .filter((line) => !/^[#>*-]{1,3}$/.test(line));
       }
 
+      function getTokenSet(text = '') {
+        return new Set(
+          normalizeComparisonUnit(text)
+            .split(' ')
+            .map((token) => token.trim())
+            .filter((token) => token.length > 2)
+        );
+      }
+
+      function getTokenOverlapScore(a = '', b = '') {
+        const aTokens = getTokenSet(a);
+        const bTokens = getTokenSet(b);
+        if (!aTokens.size || !bTokens.size) return 0;
+        let shared = 0;
+        for (const token of aTokens) {
+          if (bTokens.has(token)) shared += 1;
+        }
+        return shared / Math.max(aTokens.size, bTokens.size);
+      }
+
+      function extractAppendedSuffix(currentText = '', previousText = '') {
+        const current = String(currentText || '').trim();
+        const previous = String(previousText || '').trim();
+        if (!current || !previous) return '';
+        if (current.startsWith(previous) && current.length > previous.length + 12) {
+          return current.slice(previous.length).replace(/^[:;,.\-\s]+/, '').trim();
+        }
+        const normalizedCurrent = normalizeComparisonUnit(current);
+        const normalizedPrevious = normalizeComparisonUnit(previous);
+        if (normalizedCurrent.startsWith(normalizedPrevious) && normalizedCurrent.length > normalizedPrevious.length + 12) {
+          const rawIndex = current.toLowerCase().indexOf(previous.toLowerCase());
+          if (rawIndex === 0) {
+            return current.slice(previous.length).replace(/^[:;,.\-\s]+/, '').trim();
+          }
+        }
+        return '';
+      }
+
       function getDistinctChangeLines(currentText = '', previousText = '') {
-        const previousUnits = new Set(getComparisonUnits(previousText).map((line) => normalizeComparisonUnit(line)));
-        return getComparisonUnits(currentText).filter((line) => {
+        const previousUnits = getComparisonUnits(previousText);
+        const previousNormalizedUnits = previousUnits.map((line) => normalizeComparisonUnit(line)).filter(Boolean);
+        const currentUnits = getComparisonUnits(currentText);
+        return currentUnits.map((line) => {
           const normalized = normalizeComparisonUnit(line);
-          if (!normalized) return false;
-          return !previousUnits.has(normalized);
-        });
+          if (!normalized) return null;
+          if (previousNormalizedUnits.includes(normalized)) return null;
+
+          let bestMatch = '';
+          let bestScore = 0;
+          for (const previousLine of previousUnits) {
+            const previousNormalized = normalizeComparisonUnit(previousLine);
+            if (!previousNormalized) continue;
+            if (normalized.includes(previousNormalized) || previousNormalized.includes(normalized)) {
+              bestMatch = previousLine;
+              bestScore = 1;
+              break;
+            }
+            const overlap = getTokenOverlapScore(line, previousLine);
+            if (overlap > bestScore) {
+              bestScore = overlap;
+              bestMatch = previousLine;
+            }
+          }
+
+          const appended = bestMatch ? extractAppendedSuffix(line, bestMatch) : '';
+          if (appended) {
+            return `+ ${appended}`;
+          }
+          if (bestScore >= 0.72) return null;
+          if (bestScore >= 0.45) {
+            return `↺ ${line}`;
+          }
+          return line;
+        }).filter(Boolean);
       }
 
       function getAssistantChangeSummary(blocks = []) {
