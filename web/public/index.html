@@ -2947,6 +2947,7 @@
         const assistantBlocks = group.blocks.filter((block) => block.classification.kind === 'assistant');
         const primaryUserBlock = userBlocks[userBlocks.length - 1] || null;
         const finalAssistantBlock = assistantBlocks[assistantBlocks.length - 1] || null;
+        const latestNonUserBlock = [...group.blocks].reverse().find((block) => block.classification.kind !== 'user' && block.classification.kind !== 'developer') || null;
         const toolCount = group.blocks.filter((block) => block.classification.kind === 'tool').length;
         const noteCount = group.blocks.filter((block) => block.classification.kind === 'agent-note').length;
         const contextCount = group.blocks.filter((block) => block.classification.kind === 'developer').length + Math.max(0, userBlocks.length - (primaryUserBlock ? 1 : 0));
@@ -2957,17 +2958,22 @@
           if (block.classification.kind === 'assistant') return false;
           return shouldShowLowSignalBlock(block);
         });
+        const hideUserInBody = transcriptViewMode === 'changes';
         const badges = [
-          primaryUserBlock ? `<span class="output-badge user">${escapeHtml(t('myInput'))}</span>` : '',
+          !hideUserInBody && primaryUserBlock ? `<span class="output-badge user">${escapeHtml(t('myInput'))}</span>` : '',
           finalAssistantBlock ? `<span class="output-badge assistant">${escapeHtml(t('finalAnswer'))}</span>` : '',
           toolCount ? `<span class="output-badge low-signal">⚙ ${toolCount}</span>` : '',
           noteCount ? `<span class="output-badge low-signal">📝 ${noteCount}</span>` : '',
-          contextCount ? `<span class="output-badge low-signal">${escapeHtml(t('contextLabel', { count: contextCount }))}</span>` : '',
+          contextCount && !hideUserInBody ? `<span class="output-badge low-signal">${escapeHtml(t('contextLabel', { count: contextCount }))}</span>` : '',
         ].filter(Boolean).join('');
-        const title = primaryUserBlock?.preview || t('noInput');
-        const preview = finalAssistantBlock?.preview || t('answerPending');
+        const title = hideUserInBody
+          ? (latestNonUserBlock?.preview || finalAssistantBlock?.preview || t('answerPending'))
+          : (primaryUserBlock?.preview || t('noInput'));
+        const preview = hideUserInBody
+          ? (primaryUserBlock?.preview || t('noInput'))
+          : (finalAssistantBlock?.preview || t('answerPending'));
         const visibleBody = [
-          primaryUserBlock ? `
+          !hideUserInBody && primaryUserBlock ? `
             <div class="turn-block">
               <div class="output-summary-badges"><span class="output-badge user">${escapeHtml(t('myInput'))}</span></div>
               <div class="output-summary-title">${escapeHtml(summarizeText(primaryUserBlock.body, t('noInput')))}</div>
