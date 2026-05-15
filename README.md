@@ -263,6 +263,7 @@ For deeper notes:
 - `docs/architecture.md`
 - `docs/mvp-plan.md`
 - `docs/next-steps.md`
+- `docs/roadmap.md`
 
 ---
 
