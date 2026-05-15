@@ -124,11 +124,41 @@ function findUserByUsername(users = [], username = '') {
   return users.find((entry) => entry.username === username) || null;
 }
 
+function normalizeScopeList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, items) => items.indexOf(item) === index);
+}
+
+function getUserScope(user = null) {
+  return {
+    projectPrefixes: normalizeScopeList(user?.scope?.projectPrefixes),
+    threadIds: normalizeScopeList(user?.scope?.threadIds),
+  };
+}
+
+function hasUserScope(scope = null) {
+  return !!((scope?.projectPrefixes?.length || 0) || (scope?.threadIds?.length || 0));
+}
+
+function isThreadAllowedForScope(thread = {}, scope = null) {
+  if (!hasUserScope(scope)) return true;
+  const threadId = String(thread?.id || '').trim();
+  const cwd = String(thread?.cwd || '').trim();
+  const projectLabel = getProjectLabel(cwd);
+  const allowedByThread = scope.threadIds.includes(threadId);
+  const allowedByProject = scope.projectPrefixes.some((prefix) => cwd.startsWith(prefix) || projectLabel === prefix);
+  return allowedByThread || allowedByProject;
+}
+
 function sanitizeUser(user = null, users = []) {
   return {
     username: user?.username || '',
     permissionMode: normalizePermissionMode(user?.permissionMode),
     role: getUserRole(user, users),
+    scope: getUserScope(user),
   };
 }
 
@@ -199,6 +229,7 @@ async function getAuthState(req) {
     sessionId: session.sessionId,
     permissionMode: capabilities.mode,
     role,
+    scope: getUserScope(user),
     capabilities,
   };
 }
@@ -225,6 +256,7 @@ function sendPermissionDenied(res, authState, capability) {
     permissionDenied: true,
     permissionMode: authState?.permissionMode || DEFAULT_PERMISSION_MODE,
     role: authState?.role || DEFAULT_USER_ROLE,
+    scope: authState?.scope || { projectPrefixes: [], threadIds: [] },
     capabilities: authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE, DEFAULT_USER_ROLE),
   });
 }
@@ -543,7 +575,7 @@ function runPython(code, extraEnv = {}) {
   });
 }
 
-async function listThreads() {
+async function listThreads(scope = null) {
   const code = `
 import json, os, sqlite3
 path = os.path.join(os.environ['CODEX_HOME'], 'state_5.sqlite')
@@ -568,7 +600,7 @@ print(json.dumps([dict(row) for row in rows], ensure_ascii=False))
   const raw = await runPython(code, {
     CODEX_POCKET_MAX_THREADS: String(maxThreads),
   });
-  const threads = JSON.parse(raw || '[]');
+  const threads = JSON.parse(raw || '[]').filter((thread) => isThreadAllowedForScope(thread, scope));
   return Promise.all(threads.map((thread) => enrichThreadState(thread)));
 }
 
@@ -912,12 +944,19 @@ async function tryReadRuntimeThread(threadId, includeTurns = false) {
   }
 }
 
-async function getSessionPayload(threadId) {
-  const [thread, threads, runtimeThread] = await Promise.all([
-    readThreadMeta(threadId),
-    listThreads(),
-    tryReadRuntimeThread(threadId, true),
+async function getSessionPayload(threadId, scope = null) {
+  const threads = await listThreads(scope);
+  const resolvedThreadId = threadId || threads[0]?.id || '';
+  if (!resolvedThreadId) {
+    throw createError('No Codex threads found in the allowed scope', 404);
+  }
+  const [thread, runtimeThread] = await Promise.all([
+    readThreadMeta(resolvedThreadId),
+    tryReadRuntimeThread(resolvedThreadId, true),
   ]);
+  if (!isThreadAllowedForScope(thread, scope)) {
+    throw createError(`Thread is outside this account's allowed scope`, 403);
+  }
   const transcript = await readThreadTranscript(thread.rollout_path);
   const terminalInteraction = getTerminalInteractionState(thread.id);
   const state = deriveThreadState({
@@ -938,6 +977,11 @@ async function getSessionPayload(threadId) {
       state: state.type,
     },
     threads: threads.map(toPublicThread),
+    scope: {
+      restricted: hasUserScope(scope),
+      projectPrefixes: scope?.projectPrefixes || [],
+      threadIds: scope?.threadIds || [],
+    },
     quickControls: {
       interrupt: true,
       terminal: terminalInteraction,
@@ -1176,6 +1220,7 @@ const server = http.createServer(async (req, res) => {
       username: state.username,
       permissionMode: state.permissionMode,
       role: state.role,
+      scope: state.scope || { projectPrefixes: [], threadIds: [] },
       capabilities: state.capabilities,
     });
     return;
@@ -1210,6 +1255,7 @@ const server = http.createServer(async (req, res) => {
         username,
         permissionMode: capabilities.mode,
         role,
+        scope: getUserScope(user),
         capabilities,
       }, {
         'set-cookie': serializeCookie(sessionCookieName, sessionId, {
@@ -1265,8 +1311,15 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/threads') {
     try {
-      const threads = await listThreads();
-      sendJson(res, 200, { threads: threads.map(toPublicThread) });
+      const threads = await listThreads(authState?.scope);
+      sendJson(res, 200, {
+        threads: threads.map(toPublicThread),
+        scope: {
+          restricted: hasUserScope(authState?.scope),
+          projectPrefixes: authState?.scope?.projectPrefixes || [],
+          threadIds: authState?.scope?.threadIds || [],
+        },
+      });
     } catch (error) {
       sendJson(res, 500, { error: error.message });
     }
@@ -1275,10 +1328,13 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/session') {
     try {
-      const payload = await getSessionPayload(url.searchParams.get('threadId'));
+      const payload = await getSessionPayload(url.searchParams.get('threadId'), authState?.scope);
       sendJson(res, 200, payload);
     } catch (error) {
-      sendJson(res, 500, { error: error.message });
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
     }
     return;
   }
@@ -1335,6 +1391,41 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/users/scope' && req.method === 'POST') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      const body = await readJsonBody(req);
+      const username = String(body.username || '').trim();
+      if (!username) {
+        throw createError('Username is required', 400);
+      }
+      const users = await loadUsers();
+      const user = findUserByUsername(users, username);
+      if (!user) {
+        throw createError(`Unknown user: ${username}`, 404);
+      }
+      if (!canManageTargetUser(authState, user, users)) {
+        throw createError(`You cannot manage ${username}`, 403);
+      }
+      user.scope = {
+        projectPrefixes: normalizeScopeList(body.projectPrefixes),
+        threadIds: normalizeScopeList(body.threadIds),
+      };
+      user.updatedAtMs = Date.now();
+      await saveUsers(users);
+      sendJson(res, 200, {
+        ok: true,
+        user: sanitizeUser(user, users),
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
   if (url.pathname === '/api/users/role' && req.method === 'POST') {
     try {
       if (!requireCapability(res, authState, 'canManageRoles')) return;
@@ -1376,6 +1467,10 @@ const server = http.createServer(async (req, res) => {
     try {
       if (!requireCapability(res, authState, 'canSendInput')) return;
       const body = await readJsonBody(req);
+      const thread = await readThreadMeta(body.threadId);
+      if (!isThreadAllowedForScope(thread, authState?.scope)) {
+        throw createError(`Thread is outside this account's allowed scope`, 403);
+      }
       const result = await sendInputToThread(body.threadId, body.text);
       sendJson(res, 200, result);
     } catch (error) {
@@ -1389,7 +1484,14 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/session-events') {
     try {
-      await startSessionEventStream(req, res, url.searchParams.get('threadId'));
+      const threadId = url.searchParams.get('threadId');
+      if (threadId) {
+        const thread = await readThreadMeta(threadId);
+        if (!isThreadAllowedForScope(thread, authState?.scope)) {
+          throw createError(`Thread is outside this account's allowed scope`, 403);
+        }
+      }
+      await startSessionEventStream(req, res, threadId);
     } catch (error) {
       sendJson(res, error.statusCode || 500, {
         error: error.message,
@@ -1403,6 +1505,10 @@ const server = http.createServer(async (req, res) => {
     try {
       if (!requireCapability(res, authState, 'canInterrupt')) return;
       const body = await readJsonBody(req);
+      const thread = await readThreadMeta(body.threadId);
+      if (!isThreadAllowedForScope(thread, authState?.scope)) {
+        throw createError(`Thread is outside this account's allowed scope`, 403);
+      }
       const result = await interruptThread(body.threadId, body.turnId);
       sendJson(res, 200, result);
     } catch (error) {
@@ -1418,6 +1524,10 @@ const server = http.createServer(async (req, res) => {
     try {
       if (!requireCapability(res, authState, 'canUseTerminalControl')) return;
       const body = await readJsonBody(req);
+      const thread = await readThreadMeta(body.threadId);
+      if (!isThreadAllowedForScope(thread, authState?.scope)) {
+        throw createError(`Thread is outside this account's allowed scope`, 403);
+      }
       const result = await sendTerminalControl(body.threadId, body.action, body.turnId);
       sendJson(res, 200, result);
     } catch (error) {

@@ -660,6 +660,11 @@
         margin: 0;
         padding-left: 18px;
       }
+      .access-onboarding-scope {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
       .permission-manager[hidden] {
         display: none;
       }
@@ -686,9 +691,26 @@
       }
       .permission-user-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        grid-template-columns: minmax(0, 1fr);
         gap: 8px;
         align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .permission-user-controls {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, auto));
+        gap: 8px;
+        align-items: center;
+      }
+      .permission-user-scope {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .permission-user-scope input {
+        font-size: 12px;
+        padding: 8px 10px;
       }
       .permission-user-name {
         font-size: 12px;
@@ -1002,6 +1024,7 @@
               <li>Use filters, search, and project inbox shortcuts to triage work.</li>
               <li>Ask an owner/admin if you need a stronger access mode.</li>
             </ul>
+            <div class="access-onboarding-scope" id="accessOnboardingScope"></div>
           </section>
           <details class="permission-manager" id="permissionManager" hidden>
             <summary>
@@ -1106,6 +1129,7 @@
       const accessOnboardingTitleEl = document.getElementById('accessOnboardingTitle');
       const accessOnboardingBodyEl = document.getElementById('accessOnboardingBody');
       const accessOnboardingBulletsEl = document.getElementById('accessOnboardingBullets');
+      const accessOnboardingScopeEl = document.getElementById('accessOnboardingScope');
       const permissionManagerEl = document.getElementById('permissionManager');
       const permissionManagerTitleEl = document.getElementById('permissionManagerTitle');
       const permissionManagerSummaryMetaEl = document.getElementById('permissionManagerSummaryMeta');
@@ -1176,6 +1200,10 @@
           permissionManagerSaving: 'Saving…',
           permissionManagerSaved: 'Saved',
           permissionManagerSaveFailed: 'Save failed: {message}',
+          scopeProjectsPlaceholder: 'Allowed projects (csv paths or labels)',
+          scopeThreadsPlaceholder: 'Allowed thread ids (csv)',
+          scopeSummaryNone: 'Scope: full account visibility',
+          scopeSummaryRestricted: 'Scope: projects [{projects}] · threads [{threads}]',
           preparingConnection: 'Preparing connection…',
           inputPlaceholder: 'Type input to send to the selected Codex thread',
           terminalWaiting: 'No terminal input target',
@@ -1333,6 +1361,10 @@
           permissionManagerSaving: '저장 중…',
           permissionManagerSaved: '저장됨',
           permissionManagerSaveFailed: '저장 실패: {message}',
+          scopeProjectsPlaceholder: '허용 프로젝트 (csv 경로/라벨)',
+          scopeThreadsPlaceholder: '허용 thread id (csv)',
+          scopeSummaryNone: '범위: 계정 전체 표시',
+          scopeSummaryRestricted: '범위: projects [{projects}] · threads [{threads}]',
           preparingConnection: '연결 준비 중…',
           inputPlaceholder: '선택한 Codex 스레드에 보낼 입력을 적어줘',
           terminalWaiting: '터미널 입력 대기 중 아님',
@@ -1447,6 +1479,7 @@
       let authPermissionMode = 'control';
       let authRole = 'owner';
       let authCapabilities = { mode: 'control', role: 'owner', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true, canManageRoles: true };
+      let authScope = { projectPrefixes: [], threadIds: [] };
       let permissionManagerUsers = [];
       let permissionManagerBusyUser = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
@@ -1552,19 +1585,33 @@
         accessBadgeEl.title = `${getRoleLabel(authRole)} · ${getPermissionHint(authPermissionMode)}`;
       }
 
+      function getScopeSummary(scope = authScope) {
+        const projects = Array.isArray(scope?.projectPrefixes) ? scope.projectPrefixes : [];
+        const threads = Array.isArray(scope?.threadIds) ? scope.threadIds : [];
+        if (!projects.length && !threads.length) {
+          return t('scopeSummaryNone');
+        }
+        return t('scopeSummaryRestricted', {
+          projects: projects.join(', ') || '-',
+          threads: threads.join(', ') || '-',
+        });
+      }
+
       function renderAccessOnboarding() {
         if (!accessOnboardingEl) return;
         const showReadOnly = authenticated && authPermissionMode === 'read_only';
         const showInputOnly = authenticated && authPermissionMode === 'input_only';
-        const visible = showReadOnly || showInputOnly;
+        const visible = showReadOnly || showInputOnly || (authenticated && ((authScope?.projectPrefixes?.length || 0) || (authScope?.threadIds?.length || 0)));
         accessOnboardingEl.hidden = !visible;
         if (!visible) return;
-        const title = showReadOnly ? t('readOnlyOnboardingTitle') : t('inputOnlyOnboardingTitle');
-        const body = showReadOnly ? t('readOnlyOnboardingBody') : t('inputOnlyOnboardingBody');
-        const bullets = String(showReadOnly ? t('readOnlyOnboardingBullets') : t('inputOnlyOnboardingBullets')).split('|').filter(Boolean);
+        const title = showReadOnly ? t('readOnlyOnboardingTitle') : showInputOnly ? t('inputOnlyOnboardingTitle') : t('accessMode', { role: getRoleLabel(authRole), mode: getPermissionLabel(authPermissionMode) });
+        const body = showReadOnly ? t('readOnlyOnboardingBody') : showInputOnly ? t('inputOnlyOnboardingBody') : getPermissionHint(authPermissionMode);
+        const bullets = String(showReadOnly ? t('readOnlyOnboardingBullets') : showInputOnly ? t('inputOnlyOnboardingBullets') : '').split('|').filter(Boolean);
         accessOnboardingTitleEl.textContent = title;
         accessOnboardingBodyEl.textContent = body;
         accessOnboardingBulletsEl.innerHTML = bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+        accessOnboardingBulletsEl.hidden = bullets.length === 0;
+        accessOnboardingScopeEl.textContent = getScopeSummary(authScope);
       }
 
       function renderPermissionManager() {
@@ -1583,22 +1630,30 @@
           const busy = permissionManagerBusyUser === user.username;
           const manageable = !!user.manageable;
           const canEditRole = !!authCapabilities?.canManageRoles;
+          const scopeProjects = Array.isArray(user.scope?.projectPrefixes) ? user.scope.projectPrefixes.join(', ') : '';
+          const scopeThreads = Array.isArray(user.scope?.threadIds) ? user.scope.threadIds.join(', ') : '';
           return `
             <div class="permission-user-row">
               <div class="permission-user-name">${escapeHtml(user.username)} · ${escapeHtml(getRoleLabel(user.role || 'member'))}</div>
-              <select data-permission-user="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
-                <option value="read_only" ${user.permissionMode === 'read_only' ? 'selected' : ''}>${escapeHtml(t('permissionReadOnly'))}</option>
-                <option value="input_only" ${user.permissionMode === 'input_only' ? 'selected' : ''}>${escapeHtml(t('permissionInputOnly'))}</option>
-                <option value="control" ${user.permissionMode === 'control' ? 'selected' : ''}>${escapeHtml(t('permissionControl'))}</option>
-              </select>
-              ${canEditRole ? `
-                <select data-role-user="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>
-                  <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>${escapeHtml(t('roleOwner'))}</option>
-                  <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>${escapeHtml(t('roleAdmin'))}</option>
-                  <option value="member" ${user.role === 'member' ? 'selected' : ''}>${escapeHtml(t('roleMember'))}</option>
+              <div class="permission-user-controls">
+                <select data-permission-user="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
+                  <option value="read_only" ${user.permissionMode === 'read_only' ? 'selected' : ''}>${escapeHtml(t('permissionReadOnly'))}</option>
+                  <option value="input_only" ${user.permissionMode === 'input_only' ? 'selected' : ''}>${escapeHtml(t('permissionInputOnly'))}</option>
+                  <option value="control" ${user.permissionMode === 'control' ? 'selected' : ''}>${escapeHtml(t('permissionControl'))}</option>
                 </select>
-              ` : ''}
-              <button type="button" class="secondary" data-permission-save="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(busy ? t('permissionManagerSaving') : t('permissionManagerSave'))}</button>
+                ${canEditRole ? `
+                  <select data-role-user="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>
+                    <option value="owner" ${user.role === 'owner' ? 'selected' : ''}>${escapeHtml(t('roleOwner'))}</option>
+                    <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>${escapeHtml(t('roleAdmin'))}</option>
+                    <option value="member" ${user.role === 'member' ? 'selected' : ''}>${escapeHtml(t('roleMember'))}</option>
+                  </select>
+                ` : ''}
+                <button type="button" class="secondary" data-permission-save="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(busy ? t('permissionManagerSaving') : t('permissionManagerSave'))}</button>
+              </div>
+              <div class="permission-user-scope">
+                <input type="text" data-scope-projects-user="${escapeHtml(user.username)}" value="${escapeHtml(scopeProjects)}" placeholder="${escapeHtml(t('scopeProjectsPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
+                <input type="text" data-scope-threads-user="${escapeHtml(user.username)}" value="${escapeHtml(scopeThreads)}" placeholder="${escapeHtml(t('scopeThreadsPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
+              </div>
             </div>
           `;
         }).join('');
@@ -1636,7 +1691,11 @@
         };
       }
 
-      async function savePermissionMode(username, permissionMode, role = null) {
+      function parseScopeCsv(value = '') {
+        return String(value || '').split(',').map((item) => item.trim()).filter(Boolean);
+      }
+
+      async function savePermissionMode(username, permissionMode, role = null, scope = null) {
         permissionManagerBusyUser = username;
         renderPermissionManager();
         try {
@@ -1651,6 +1710,18 @@
             throw new Error(data.error || 'Permission update failed');
           }
           nextUser = data.user || { username, permissionMode };
+          if (scope) {
+            const scopeResponse = await apiFetch('/api/users/scope', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ username, projectPrefixes: scope.projectPrefixes || [], threadIds: scope.threadIds || [] }),
+            });
+            const scopeData = await scopeResponse.json();
+            if (!scopeResponse.ok) {
+              throw new Error(scopeData.error || 'Scope update failed');
+            }
+            nextUser = scopeData.user || nextUser;
+          }
           if (role && authCapabilities?.canManageRoles && role !== nextUser.role) {
             const roleResponse = await apiFetch('/api/users/role', {
               method: 'POST',
@@ -1669,6 +1740,7 @@
           if (username === authenticatedUsername) {
             authPermissionMode = nextUser.permissionMode || permissionMode;
             authRole = nextUser.role || authRole;
+            authScope = nextUser.scope || authScope;
             authCapabilities = buildCapabilities(authPermissionMode, authRole);
           }
           inputStatusEl.textContent = t('permissionManagerSaved');
@@ -1748,7 +1820,7 @@
         if (langSelectEl) langSelectEl.value = currentLang;
         if (authLangSelectEl) authLangSelectEl.value = currentLang;
         applyStaticTranslations();
-        setAuthUiState(authenticated, authRequired, authenticatedUsername, authPermissionMode, authRole, authCapabilities);
+        setAuthUiState(authenticated, authRequired, authenticatedUsername, authPermissionMode, authRole, authScope, authCapabilities);
         if (!rerender) return;
         renderStickyContext(lastActiveThread);
         if (lastActiveThread) {
@@ -2011,12 +2083,13 @@
         }
       }
 
-      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '', nextPermissionMode = 'control', nextRole = 'owner', nextCapabilities = null) {
+      function setAuthUiState(nextAuthenticated, nextAuthRequired, nextUsername = '', nextPermissionMode = 'control', nextRole = 'owner', nextScope = null, nextCapabilities = null) {
         authenticated = !!nextAuthenticated;
         authRequired = !!nextAuthRequired;
         authenticatedUsername = nextUsername || '';
         authPermissionMode = nextPermissionMode || 'control';
         authRole = nextRole || 'owner';
+        authScope = nextScope || { projectPrefixes: [], threadIds: [] };
         authCapabilities = nextCapabilities || buildCapabilities(authPermissionMode, authRole);
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
@@ -2042,7 +2115,7 @@
       async function refreshAuthSession() {
         const response = await fetch('/auth/session', { cache: 'no-store' });
         const data = await response.json();
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.capabilities || null);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.scope || null, data.capabilities || null);
         return data;
       }
 
@@ -2057,7 +2130,7 @@
           throw new Error(data.error || t('loginFailed'));
         }
         authErrorEl.textContent = '';
-        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.capabilities || null);
+        setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.scope || null, data.capabilities || null);
         return data;
       }
 
@@ -2065,7 +2138,7 @@
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
         permissionManagerUsers = [];
-        setAuthUiState(false, authRequired, '', 'control', 'owner', buildCapabilities('control', 'owner'));
+        setAuthUiState(false, authRequired, '', 'control', 'owner', { projectPrefixes: [], threadIds: [] }, buildCapabilities('control', 'owner'));
       }
 
       async function apiFetch(input, init = {}) {
@@ -2075,7 +2148,7 @@
         });
 
         if (response.status === 401) {
-          setAuthUiState(false, true, '', 'control', 'owner', buildCapabilities('control', 'owner'));
+          setAuthUiState(false, true, '', 'control', 'owner', { projectPrefixes: [], threadIds: [] }, buildCapabilities('control', 'owner'));
         }
 
         return response;
@@ -3005,8 +3078,13 @@
         const username = button.dataset.permissionSave || '';
         const select = permissionManagerListEl.querySelector(`[data-permission-user="${CSS.escape(username)}"]`);
         const roleSelect = permissionManagerListEl.querySelector(`[data-role-user="${CSS.escape(username)}"]`);
+        const projectsInput = permissionManagerListEl.querySelector(`[data-scope-projects-user="${CSS.escape(username)}"]`);
+        const threadsInput = permissionManagerListEl.querySelector(`[data-scope-threads-user="${CSS.escape(username)}"]`);
         if (!username || !select) return;
-        await savePermissionMode(username, select.value || 'control', roleSelect ? (roleSelect.value || 'member') : null);
+        await savePermissionMode(username, select.value || 'control', roleSelect ? (roleSelect.value || 'member') : null, {
+          projectPrefixes: parseScopeCsv(projectsInput ? projectsInput.value : ''),
+          threadIds: parseScopeCsv(threadsInput ? threadsInput.value : ''),
+        });
       });
 
       transcriptDensityEl.addEventListener('change', () => {

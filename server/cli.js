@@ -117,6 +117,9 @@ Usage:
   node server/cli.js user set-password <username>
   node server/cli.js user set-mode <username> <mode>
   node server/cli.js user set-role <username> <role>
+  node server/cli.js user set-projects <username> <csv>
+  node server/cli.js user set-threads <username> <csv>
+  node server/cli.js user clear-scope <username>
   node server/cli.js user list
 `);
 }
@@ -145,6 +148,16 @@ function normalizeUserRole(role = '') {
 function getUserRole(user, index = 0) {
   if (user?.role) return normalizeUserRole(user.role);
   return index === 0 ? 'owner' : 'member';
+}
+
+function normalizeScopeList(value = '') {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 async function promptAccount(seedName = '') {
@@ -372,7 +385,7 @@ async function addUser(username = '', mode = 'control', role = 'member') {
   const permissionMode = normalizePermissionMode(mode);
   const normalizedRole = normalizeUserRole(role);
   const { salt, passwordHash } = hashPassword(prompt.password);
-  config.users.push({ username: prompt.username, salt, passwordHash, permissionMode, role: normalizedRole, createdAtMs: Date.now(), updatedAtMs: Date.now() });
+  config.users.push({ username: prompt.username, salt, passwordHash, permissionMode, role: normalizedRole, scope: { projectPrefixes: [], threadIds: [] }, createdAtMs: Date.now(), updatedAtMs: Date.now() });
   await saveUsersConfig(config);
   console.log(`Saved login user '${prompt.username}' (${permissionMode}, ${normalizedRole}).`);
 }
@@ -436,6 +449,41 @@ async function setUserRole(username = '', role = '') {
   console.log(`Updated role for '${username}' to '${normalizedRole}'.`);
 }
 
+async function setUserProjects(username = '', csv = '') {
+  if (!username) throw new Error('Username is required for set-projects');
+  const config = await loadUsersConfig();
+  const user = findUser(config, username);
+  if (!user) throw new Error(`Unknown user: ${username}`);
+  user.scope = user.scope || { projectPrefixes: [], threadIds: [] };
+  user.scope.projectPrefixes = normalizeScopeList(csv);
+  user.updatedAtMs = Date.now();
+  await saveUsersConfig(config);
+  console.log(`Updated project scope for '${username}' (${user.scope.projectPrefixes.join(', ') || 'none'}).`);
+}
+
+async function setUserThreads(username = '', csv = '') {
+  if (!username) throw new Error('Username is required for set-threads');
+  const config = await loadUsersConfig();
+  const user = findUser(config, username);
+  if (!user) throw new Error(`Unknown user: ${username}`);
+  user.scope = user.scope || { projectPrefixes: [], threadIds: [] };
+  user.scope.threadIds = normalizeScopeList(csv);
+  user.updatedAtMs = Date.now();
+  await saveUsersConfig(config);
+  console.log(`Updated thread scope for '${username}' (${user.scope.threadIds.join(', ') || 'none'}).`);
+}
+
+async function clearUserScope(username = '') {
+  if (!username) throw new Error('Username is required for clear-scope');
+  const config = await loadUsersConfig();
+  const user = findUser(config, username);
+  if (!user) throw new Error(`Unknown user: ${username}`);
+  user.scope = { projectPrefixes: [], threadIds: [] };
+  user.updatedAtMs = Date.now();
+  await saveUsersConfig(config);
+  console.log(`Cleared scope restrictions for '${username}'.`);
+}
+
 async function listUsers() {
   const config = await loadUsersConfig();
   if (!config.users.length) {
@@ -443,7 +491,12 @@ async function listUsers() {
     return;
   }
   for (const [index, user] of config.users.entries()) {
-    console.log(`- ${user.username} (${normalizePermissionMode(user.permissionMode)}, ${getUserRole(user, index)})`);
+    const projects = normalizeScopeList(user.scope?.projectPrefixes);
+    const threads = normalizeScopeList(user.scope?.threadIds);
+    const scopeLabel = projects.length || threads.length
+      ? ` projects=[${projects.join(', ')}] threads=[${threads.join(', ')}]`
+      : '';
+    console.log(`- ${user.username} (${normalizePermissionMode(user.permissionMode)}, ${getUserRole(user, index)})${scopeLabel}`);
   }
 }
 
@@ -475,8 +528,11 @@ async function main() {
     if (subcommand === 'set-password') return setUserPassword(rest[0] || '');
     if (subcommand === 'set-mode') return setUserMode(rest[0] || '', rest[1] || '');
     if (subcommand === 'set-role') return setUserRole(rest[0] || '', rest[1] || '');
+    if (subcommand === 'set-projects') return setUserProjects(rest[0] || '', rest[1] || '');
+    if (subcommand === 'set-threads') return setUserThreads(rest[0] || '', rest[1] || '');
+    if (subcommand === 'clear-scope') return clearUserScope(rest[0] || '');
     if (subcommand === 'list') return listUsers();
-    throw new Error('Unknown user subcommand. Use add, remove, set-password, set-mode, set-role, or list.');
+    throw new Error('Unknown user subcommand. Use add, remove, set-password, set-mode, set-role, set-projects, set-threads, clear-scope, or list.');
   }
 
   throw new Error(`Unknown command: ${command}`);
