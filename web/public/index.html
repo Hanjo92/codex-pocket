@@ -365,12 +365,27 @@
         display: grid;
         gap: 8px;
       }
+      details.thread-section {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        padding: 0;
+      }
+      details.thread-section[open] {
+        border-color: rgba(116, 192, 252, 0.2);
+      }
       .thread-section-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
-        padding: 2px 2px 0;
+        padding: 10px 12px;
+        cursor: pointer;
+        list-style: none;
+      }
+      .thread-section-head::-webkit-details-marker {
+        display: none;
       }
       .thread-section-title {
         font-size: 11px;
@@ -382,6 +397,16 @@
       .thread-section-count {
         font-size: 11px;
         color: var(--muted);
+      }
+      .thread-section-toggle {
+        font-size: 11px;
+        color: var(--muted);
+        margin-left: auto;
+      }
+      .thread-section-body {
+        display: grid;
+        gap: 8px;
+        padding: 0 8px 8px;
       }
       .thread-item {
         display: grid;
@@ -1006,6 +1031,8 @@
           attentionSectionInput: 'Waiting input',
           attentionSectionOther: 'Other attention',
           noThreadSummary: 'No recent summary',
+          attentionCollapse: 'Collapse',
+          attentionExpand: 'Expand',
           terminalReady: 'Terminal input ready',
           terminalReadyHint: 'Enter / Esc / Ctrl+C are currently wired to the live Codex terminal stdin.',
           terminalStdinHint: 'stdin hint: {preview}',
@@ -1133,6 +1160,8 @@
           attentionSectionInput: '입력 대기',
           attentionSectionOther: '기타 attention',
           noThreadSummary: '최근 요약 없음',
+          attentionCollapse: '접기',
+          attentionExpand: '펼치기',
           terminalReady: '터미널 입력 가능',
           terminalReadyHint: '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.',
           terminalStdinHint: 'stdin 힌트: {preview}',
@@ -1229,6 +1258,13 @@
       let threadViewedAt = (() => {
         try {
           return JSON.parse(localStorage.getItem('codex-pocket:thread-viewed-at') || '{}');
+        } catch {
+          return {};
+        }
+      })();
+      let attentionSectionCollapsed = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('codex-pocket:attention-section-collapsed') || '{}');
         } catch {
           return {};
         }
@@ -2131,6 +2167,18 @@
         `;
       }
 
+      function isAttentionSectionOpen(state = '') {
+        if (Object.prototype.hasOwnProperty.call(attentionSectionCollapsed, state)) {
+          return !attentionSectionCollapsed[state];
+        }
+        return state !== 'other';
+      }
+
+      function setAttentionSectionOpen(state = '', open = true) {
+        attentionSectionCollapsed[state] = !open;
+        localStorage.setItem('codex-pocket:attention-section-collapsed', JSON.stringify(attentionSectionCollapsed));
+      }
+
       function renderAttentionSections(threads = []) {
         const groups = [
           { state: 'failed', items: threads.filter((thread) => thread.state === 'failed') },
@@ -2139,15 +2187,21 @@
           { state: 'other', items: threads.filter((thread) => !['failed', 'waiting_approval', 'waiting_input'].includes(thread.state)) },
         ].filter((group) => group.items.length);
 
-        return groups.map((group) => `
-          <div class="thread-section">
-            <div class="thread-section-head">
-              <div class="thread-section-title">${escapeHtml(getAttentionSectionLabel(group.state))}</div>
-              <div class="thread-section-count">${escapeHtml(String(group.items.length))}</div>
-            </div>
-            ${group.items.map((thread, index) => renderThreadItem(thread, index)).join('')}
-          </div>
-        `).join('');
+        return groups.map((group) => {
+          const open = isAttentionSectionOpen(group.state);
+          return `
+            <details class="thread-section" data-attention-section="${escapeHtml(group.state)}" ${open ? 'open' : ''}>
+              <summary class="thread-section-head">
+                <div class="thread-section-title">${escapeHtml(getAttentionSectionLabel(group.state))}</div>
+                <div class="thread-section-count">${escapeHtml(String(group.items.length))}</div>
+                <div class="thread-section-toggle">${escapeHtml(open ? t('attentionCollapse') : t('attentionExpand'))}</div>
+              </summary>
+              <div class="thread-section-body">
+                ${group.items.map((thread, index) => renderThreadItem(thread, index)).join('')}
+              </div>
+            </details>
+          `;
+        }).join('');
       }
 
       function renderThreadList(threads = []) {
@@ -2173,6 +2227,16 @@
         threadListEl.innerHTML = threadViewMode === 'attention'
           ? renderAttentionSections(filteredThreads)
           : filteredThreads.map((thread, index) => renderThreadItem(thread, index)).join('');
+
+        for (const sectionEl of threadListEl.querySelectorAll('[data-attention-section]')) {
+          const toggleEl = sectionEl.querySelector('.thread-section-toggle');
+          sectionEl.addEventListener('toggle', () => {
+            setAttentionSectionOpen(sectionEl.dataset.attentionSection || '', sectionEl.open);
+            if (toggleEl) {
+              toggleEl.textContent = sectionEl.open ? t('attentionCollapse') : t('attentionExpand');
+            }
+          });
+        }
 
         for (const button of threadListEl.querySelectorAll('[data-thread-id]')) {
           button.addEventListener('click', () => {
