@@ -640,36 +640,87 @@ function hasWaitingInputCue(text = '') {
   return /(\?$|\bwhich\b|\bwhat should\b|\bwhat do you want\b|\bplease confirm\b|\bi need\b.+\bbefore i can continue\b|\blet me know\b|\bchoose\b|\bmissing information\b|어떻게 할까|무엇을 원해|확인해줘|선택해줘|입력이 필요)/i.test(text);
 }
 
-function deriveThreadState({ blocks = [], terminalInteraction = null } = {}) {
+function normalizeRuntimeStatus(status = '') {
+  return String(status || '')
+    .replace(/[^a-z]/gi, '')
+    .toLowerCase();
+}
+
+function extractRuntimeText(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .flatMap((item) => {
+      if (!item || typeof item !== 'object') return [];
+      if (typeof item.text === 'string') return [item.text];
+      if (Array.isArray(item.content)) {
+        return item.content
+          .map((part) => (part && typeof part.text === 'string' ? part.text : ''))
+          .filter(Boolean);
+      }
+      return [];
+    })
+    .join('\n')
+    .trim();
+}
+
+function deriveThreadState({ blocks = [], terminalInteraction = null, runtimeThread = null } = {}) {
   if (terminalInteraction?.available) {
     return createNormalizedState('running', 'live terminal interaction available');
   }
 
+  const runtimeStatus = normalizeRuntimeStatus(runtimeThread?.thread?.status?.type || runtimeThread?.thread?.status);
+  const runtimeTurns = Array.isArray(runtimeThread?.thread?.turns) ? runtimeThread.thread.turns : [];
+  const latestRuntimeTurn = runtimeTurns.length ? runtimeTurns[runtimeTurns.length - 1] : null;
+  const latestRuntimeTurnStatus = normalizeRuntimeStatus(latestRuntimeTurn?.status);
+  const latestRuntimeText = normalizeStateText(extractRuntimeText(latestRuntimeTurn?.items));
+
+  if (runtimeStatus === 'inprogress' || latestRuntimeTurnStatus === 'inprogress') {
+    return createNormalizedState('running', 'runtime reports an in-progress turn');
+  }
+
+  if (latestRuntimeTurnStatus === 'failed' || hasFailureCue(latestRuntimeText)) {
+    return createNormalizedState('failed', 'runtime reports a failed turn or error text');
+  }
+
+  if (hasApprovalCue(latestRuntimeText)) {
+    return createNormalizedState('waiting_approval', 'runtime text indicates approval is required');
+  }
+
   const recentBlocks = blocks.slice(-8);
   const latestAssistant = [...recentBlocks].reverse().find((block) => block?.role === 'assistant' && block.body);
-  const latestSignal = [...recentBlocks].reverse().find((block) => block?.body);
-  const latestTexts = [latestAssistant, latestSignal]
-    .filter(Boolean)
-    .map((block) => normalizeStateText(block.body));
+  const latestMeaningful = [...recentBlocks].reverse().find((block) => block?.body);
+  const latestAssistantText = normalizeStateText(latestAssistant?.body);
+  const latestMeaningfulText = normalizeStateText(latestMeaningful?.body);
 
-  if (latestTexts.some((text) => hasApprovalCue(text))) {
-    return createNormalizedState('waiting_approval', 'approval cue in recent activity');
+  if (latestMeaningful?.role !== 'user' && hasFailureCue(latestMeaningfulText)) {
+    return createNormalizedState('failed', 'recent transcript block looks like an error');
   }
 
-  if (latestTexts.some((text) => hasFailureCue(text))) {
-    return createNormalizedState('failed', 'failure cue in recent activity');
+  if (latestMeaningful?.role !== 'user' && hasApprovalCue(latestMeaningfulText)) {
+    return createNormalizedState('waiting_approval', 'recent transcript asks for approval');
   }
 
-  if (latestTexts.some((text) => hasWaitingInputCue(text))) {
-    return createNormalizedState('waiting_input', 'assistant appears to be waiting on user follow-up');
+  if (latestMeaningful?.role === 'assistant' && hasWaitingInputCue(latestMeaningfulText || latestAssistantText)) {
+    return createNormalizedState('waiting_input', 'latest assistant response appears to wait on user input');
   }
 
-  if (latestAssistant?.body) {
+  if (runtimeStatus === 'idle' && latestRuntimeTurnStatus === 'completed' && latestAssistant?.body) {
+    return createNormalizedState('completed', 'runtime is idle after a completed assistant turn');
+  }
+
+  if (latestMeaningful?.role === 'assistant') {
     return createNormalizedState('completed', 'latest assistant response appears complete');
   }
 
-  if (latestSignal?.body) {
-    return createNormalizedState('completed', 'recent activity exists without an actionable blocker');
+  if (latestMeaningful?.role === 'user' && runtimeStatus === 'idle') {
+    return createNormalizedState('waiting_input', 'latest visible action is user input while runtime is idle');
+  }
+
+  if (latestMeaningful?.body && runtimeStatus === 'notloaded') {
+    return createNormalizedState('unknown', 'thread is not loaded and only transcript heuristics are available');
+  }
+
+  if (latestMeaningful?.body) {
+    return createNormalizedState('unknown', 'recent activity exists but does not cleanly map to a state');
   }
 
   return createNormalizedState('unknown', 'no reliable recent signal');
@@ -718,16 +769,33 @@ function toPublicThread(thread = {}) {
   };
 }
 
+async function tryReadRuntimeThread(threadId, includeTurns = false) {
+  if (!threadId) return null;
+  try {
+    if (!appServerClient.ws || appServerClient.ws.readyState !== WebSocket.OPEN) {
+      const reachable = await appServerClient.canOpenSocket();
+      if (!reachable) {
+        return null;
+      }
+    }
+    return await readRuntimeThread(threadId, includeTurns);
+  } catch {
+    return null;
+  }
+}
+
 async function getSessionPayload(threadId) {
-  const [thread, threads] = await Promise.all([
+  const [thread, threads, runtimeThread] = await Promise.all([
     readThreadMeta(threadId),
     listThreads(),
+    tryReadRuntimeThread(threadId, true),
   ]);
   const transcript = await readThreadTranscript(thread.rollout_path);
   const terminalInteraction = getTerminalInteractionState(thread.id);
   const state = deriveThreadState({
     blocks: transcript.blocks,
     terminalInteraction,
+    runtimeThread,
   });
 
   return {
