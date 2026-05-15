@@ -327,7 +327,21 @@
         font-size: 10px;
         font-weight: 800;
       }
-      .project-chip.active .project-chip-activity {
+      .project-chip-attention {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: rgba(248, 113, 113, 0.16);
+        color: #fca5a5;
+        font-size: 10px;
+        font-weight: 800;
+      }
+      .project-chip.active .project-chip-activity,
+      .project-chip.active .project-chip-attention {
         background: rgba(8, 17, 31, 0.16);
         color: #08111f;
       }
@@ -346,6 +360,28 @@
         touch-action: pan-y pinch-zoom;
         scrollbar-gutter: stable;
         padding-right: 2px;
+      }
+      .thread-section {
+        display: grid;
+        gap: 8px;
+      }
+      .thread-section-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 2px 2px 0;
+      }
+      .thread-section-title {
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .thread-section-count {
+        font-size: 11px;
+        color: var(--muted);
       }
       .thread-item {
         display: grid;
@@ -954,6 +990,10 @@
           stickyMetaEmpty: 'Your project filter and current selected thread stay visible here.{activity}',
           attentionCount: 'attention {count}',
           attentionChip: 'Inbox: {count}',
+          attentionSectionFailed: 'Failed',
+          attentionSectionApproval: 'Waiting approval',
+          attentionSectionInput: 'Waiting input',
+          attentionSectionOther: 'Other attention',
           terminalReady: 'Terminal input ready',
           terminalReadyHint: 'Enter / Esc / Ctrl+C are currently wired to the live Codex terminal stdin.',
           terminalStdinHint: 'stdin hint: {preview}',
@@ -1076,6 +1116,10 @@
           stickyMetaEmpty: '프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.{activity}',
           attentionCount: 'attention {count}',
           attentionChip: '인박스 {count}',
+          attentionSectionFailed: '실패',
+          attentionSectionApproval: '승인 대기',
+          attentionSectionInput: '입력 대기',
+          attentionSectionOther: '기타 attention',
           terminalReady: '터미널 입력 가능',
           terminalReadyHint: '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.',
           terminalStdinHint: 'stdin 힌트: {preview}',
@@ -1430,6 +1474,19 @@
         }
       }
 
+      function getAttentionSectionLabel(state = '') {
+        switch (state) {
+          case 'failed':
+            return t('attentionSectionFailed');
+          case 'waiting_approval':
+            return t('attentionSectionApproval');
+          case 'waiting_input':
+            return t('attentionSectionInput');
+          default:
+            return t('attentionSectionOther');
+        }
+      }
+
       function isAttentionThread(thread = {}) {
         return ['failed', 'waiting_approval', 'waiting_input'].includes(thread.state);
       }
@@ -1636,8 +1693,8 @@
           localStorage.removeItem('codex-pocket:project-filter');
         }
 
-        const chips = [{ value: '', label: t('allProjects'), unreadCount: 0 }]
-          .concat(sortedProjects.map((project) => ({ value: project.name, label: `${project.name} · ${project.count}`, unreadCount: project.unreadCount })));
+        const chips = [{ value: '', label: t('allProjects'), unreadCount: 0, attentionCount: stats.reduce((sum, project) => sum + (project.attentionCount || 0), 0) }]
+          .concat(sortedProjects.map((project) => ({ value: project.name, label: `${project.name} · ${project.count}`, unreadCount: project.unreadCount, attentionCount: project.attentionCount || 0 })));
 
         projectFilterEl.innerHTML = chips.map((chip) => `
           <button
@@ -1646,6 +1703,7 @@
             data-project-filter="${escapeHtml(chip.value)}"
           >
             <span>${escapeHtml(chip.label)}</span>
+            ${chip.attentionCount ? `<span class="project-chip-attention">${chip.attentionCount}</span>` : ''}
             ${chip.unreadCount ? `<span class="project-chip-activity">${chip.unreadCount} ${escapeHtml(t('newBadge'))}</span>` : ''}
           </button>
         `).join('');
@@ -2035,6 +2093,48 @@
         return `${value.slice(0, keep)}…${value.slice(-keep)}`;
       }
 
+      function renderThreadItem(thread, index = 0) {
+        const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
+        const hasNew = isThreadNew(thread);
+        const fullTitle = thread.title || t('untitledThread');
+        const fullPath = getProjectName(thread);
+        const compactTitle = shortenMiddle(fullTitle, 56);
+        const compactPath = shortenMiddle(fullPath, 44);
+        return `
+          <button class="thread-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
+            <div class="thread-item-head">
+              <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
+              <div class="thread-item-badges">
+                ${renderStateBadgeMarkup(thread.state || 'unknown')}
+                ${hasNew ? `<span class="thread-badge-new">${escapeHtml(t('newBadge'))}</span>` : ''}
+              </div>
+            </div>
+            <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
+            <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
+            <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
+          </button>
+        `;
+      }
+
+      function renderAttentionSections(threads = []) {
+        const groups = [
+          { state: 'failed', items: threads.filter((thread) => thread.state === 'failed') },
+          { state: 'waiting_approval', items: threads.filter((thread) => thread.state === 'waiting_approval') },
+          { state: 'waiting_input', items: threads.filter((thread) => thread.state === 'waiting_input') },
+          { state: 'other', items: threads.filter((thread) => !['failed', 'waiting_approval', 'waiting_input'].includes(thread.state)) },
+        ].filter((group) => group.items.length);
+
+        return groups.map((group) => `
+          <div class="thread-section">
+            <div class="thread-section-head">
+              <div class="thread-section-title">${escapeHtml(getAttentionSectionLabel(group.state))}</div>
+              <div class="thread-section-count">${escapeHtml(String(group.items.length))}</div>
+            </div>
+            ${group.items.map((thread, index) => renderThreadItem(thread, index)).join('')}
+          </div>
+        `).join('');
+      }
+
       function renderThreadList(threads = []) {
         lastThreads = threads;
         renderProjectFilter(threads);
@@ -2055,28 +2155,9 @@
           return;
         }
 
-        threadListEl.innerHTML = filteredThreads.map((thread, index) => {
-          const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
-          const hasNew = isThreadNew(thread);
-          const fullTitle = thread.title || t('untitledThread');
-          const fullPath = getProjectName(thread);
-          const compactTitle = shortenMiddle(fullTitle, 56);
-          const compactPath = shortenMiddle(fullPath, 44);
-          return `
-            <button class="thread-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
-              <div class="thread-item-head">
-                <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
-                <div class="thread-item-badges">
-                  ${renderStateBadgeMarkup(thread.state || 'unknown')}
-                  ${hasNew ? `<span class="thread-badge-new">${escapeHtml(t('newBadge'))}</span>` : ''}
-                </div>
-              </div>
-              <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
-              <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
-              <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
-            </button>
-          `;
-        }).join('');
+        threadListEl.innerHTML = threadViewMode === 'attention'
+          ? renderAttentionSections(filteredThreads)
+          : filteredThreads.map((thread, index) => renderThreadItem(thread, index)).join('');
 
         for (const button of threadListEl.querySelectorAll('[data-thread-id]')) {
           button.addEventListener('click', () => {
