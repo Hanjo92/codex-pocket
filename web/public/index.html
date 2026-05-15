@@ -629,6 +629,60 @@
         color: var(--muted);
         word-break: break-word;
       }
+      .permission-manager {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.02);
+        overflow: hidden;
+      }
+      .permission-manager[hidden] {
+        display: none;
+      }
+      .permission-manager summary {
+        cursor: pointer;
+        list-style: none;
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .permission-manager summary::-webkit-details-marker {
+        display: none;
+      }
+      .permission-manager-body {
+        padding: 0 12px 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .permission-manager-list {
+        display: grid;
+        gap: 8px;
+      }
+      .permission-user-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+        align-items: center;
+      }
+      .permission-user-name {
+        font-size: 12px;
+        font-weight: 700;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .permission-user-row select {
+        min-width: 120px;
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      .permission-manager-meta {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
       .output-list {
         display: flex;
         flex-direction: column;
@@ -915,6 +969,16 @@
             <button id="logoutBtn" class="secondary" type="button" style="display:none">Log out</button>
           </div>
           <div class="status muted" id="status">Preparing connection…</div>
+          <details class="permission-manager" id="permissionManager" hidden>
+            <summary>
+              <span id="permissionManagerTitle">Manage access modes</span>
+              <span class="meta" id="permissionManagerSummaryMeta">control users only</span>
+            </summary>
+            <div class="permission-manager-body">
+              <div class="permission-manager-meta" id="permissionManagerMeta">Change browser access levels for saved users on this host.</div>
+              <div class="permission-manager-list" id="permissionManagerList"></div>
+            </div>
+          </details>
           <form class="composer" id="inputForm">
             <textarea id="inputBox" placeholder="Type input to send to the selected Codex thread" autocomplete="off"></textarea>
             <div class="terminal-state" id="terminalStateCard">
@@ -1004,6 +1068,11 @@
       const authBodyEl = document.getElementById('authBody');
       const authSubmitBtn = document.getElementById('authSubmitBtn');
       const accessBadgeEl = document.getElementById('accessBadge');
+      const permissionManagerEl = document.getElementById('permissionManager');
+      const permissionManagerTitleEl = document.getElementById('permissionManagerTitle');
+      const permissionManagerSummaryMetaEl = document.getElementById('permissionManagerSummaryMeta');
+      const permissionManagerMetaEl = document.getElementById('permissionManagerMeta');
+      const permissionManagerListEl = document.getElementById('permissionManagerList');
       const authUsernameInputEl = document.getElementById('authUsernameInput');
       const authPasswordInputEl = document.getElementById('authPasswordInput');
       const authErrorEl = document.getElementById('authError');
@@ -1051,6 +1120,15 @@
           permissionHintControl: 'This account can send input and use control actions.',
           sendBlockedByPermission: 'This account is in read-only mode, so sending input is disabled.',
           controlBlockedByPermission: 'This account cannot use interrupt or terminal controls in the current permission mode.',
+          permissionManagerTitle: 'Manage access modes',
+          permissionManagerSummaryMeta: 'control users only',
+          permissionManagerMeta: 'Change browser access levels for saved users on this host.',
+          permissionManagerLoading: 'Loading users…',
+          permissionManagerEmpty: 'No saved users.',
+          permissionManagerSave: 'Save',
+          permissionManagerSaving: 'Saving…',
+          permissionManagerSaved: 'Saved',
+          permissionManagerSaveFailed: 'Save failed: {message}',
           preparingConnection: 'Preparing connection…',
           inputPlaceholder: 'Type input to send to the selected Codex thread',
           terminalWaiting: 'No terminal input target',
@@ -1190,6 +1268,15 @@
           permissionHintControl: '이 계정은 입력 전송과 제어 동작을 모두 사용할 수 있어.',
           sendBlockedByPermission: '이 계정은 읽기 전용 모드라서 입력 전송이 막혀 있어.',
           controlBlockedByPermission: '이 계정은 현재 권한 모드에서 interrupt/터미널 제어를 사용할 수 없어.',
+          permissionManagerTitle: '권한 모드 관리',
+          permissionManagerSummaryMeta: 'control 계정만 사용 가능',
+          permissionManagerMeta: '이 호스트에 저장된 사용자들의 브라우저 접근 권한을 바꿀 수 있어.',
+          permissionManagerLoading: '사용자 목록 불러오는 중…',
+          permissionManagerEmpty: '저장된 사용자가 없어.',
+          permissionManagerSave: '저장',
+          permissionManagerSaving: '저장 중…',
+          permissionManagerSaved: '저장됨',
+          permissionManagerSaveFailed: '저장 실패: {message}',
           preparingConnection: '연결 준비 중…',
           inputPlaceholder: '선택한 Codex 스레드에 보낼 입력을 적어줘',
           terminalWaiting: '터미널 입력 대기 중 아님',
@@ -1302,7 +1389,9 @@
       let authenticated = false;
       let authenticatedUsername = '';
       let authPermissionMode = 'control';
-      let authCapabilities = { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true };
+      let authCapabilities = { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true };
+      let permissionManagerUsers = [];
+      let permissionManagerBusyUser = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
@@ -1400,6 +1489,91 @@
         accessBadgeEl.title = getPermissionHint(authPermissionMode);
       }
 
+      function renderPermissionManager() {
+        if (!permissionManagerEl) return;
+        permissionManagerTitleEl.textContent = t('permissionManagerTitle');
+        permissionManagerSummaryMetaEl.textContent = t('permissionManagerSummaryMeta');
+        permissionManagerMetaEl.textContent = t('permissionManagerMeta');
+        const visible = authenticated && authRequired && !!authCapabilities?.canManageUsers;
+        permissionManagerEl.hidden = !visible;
+        if (!visible) return;
+        if (!permissionManagerUsers.length) {
+          permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(t('permissionManagerEmpty'))}</div>`;
+          return;
+        }
+        permissionManagerListEl.innerHTML = permissionManagerUsers.map((user) => {
+          const busy = permissionManagerBusyUser === user.username;
+          return `
+            <div class="permission-user-row">
+              <div class="permission-user-name">${escapeHtml(user.username)}</div>
+              <select data-permission-user="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>
+                <option value="read_only" ${user.permissionMode === 'read_only' ? 'selected' : ''}>${escapeHtml(t('permissionReadOnly'))}</option>
+                <option value="input_only" ${user.permissionMode === 'input_only' ? 'selected' : ''}>${escapeHtml(t('permissionInputOnly'))}</option>
+                <option value="control" ${user.permissionMode === 'control' ? 'selected' : ''}>${escapeHtml(t('permissionControl'))}</option>
+              </select>
+              <button type="button" class="secondary" data-permission-save="${escapeHtml(user.username)}" ${busy ? 'disabled' : ''}>${escapeHtml(busy ? t('permissionManagerSaving') : t('permissionManagerSave'))}</button>
+            </div>
+          `;
+        }).join('');
+      }
+
+      async function loadPermissionManager() {
+        if (!authenticated || !authRequired || !authCapabilities?.canManageUsers) {
+          permissionManagerUsers = [];
+          renderPermissionManager();
+          return;
+        }
+        permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(t('permissionManagerLoading'))}</div>`;
+        try {
+          const response = await apiFetch('/api/users', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'User list request failed');
+          }
+          permissionManagerUsers = Array.isArray(data.users) ? data.users : [];
+          renderPermissionManager();
+        } catch (error) {
+          permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+        }
+      }
+
+      async function savePermissionMode(username, permissionMode) {
+        permissionManagerBusyUser = username;
+        renderPermissionManager();
+        try {
+          const response = await apiFetch('/api/users/mode', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ username, permissionMode }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Permission update failed');
+          }
+          permissionManagerUsers = permissionManagerUsers.map((user) => user.username === username
+            ? { ...user, permissionMode: data.user?.permissionMode || permissionMode }
+            : user);
+          if (username === authenticatedUsername) {
+            authPermissionMode = data.user?.permissionMode || permissionMode;
+            authCapabilities = {
+              mode: authPermissionMode,
+              canSendInput: authPermissionMode === 'input_only' || authPermissionMode === 'control',
+              canInterrupt: authPermissionMode === 'control',
+              canUseTerminalControl: authPermissionMode === 'control',
+              canManageUsers: authPermissionMode === 'control',
+            };
+          }
+          inputStatusEl.textContent = t('permissionManagerSaved');
+        } catch (error) {
+          inputStatusEl.textContent = t('permissionManagerSaveFailed', { message: error.message });
+        } finally {
+          permissionManagerBusyUser = '';
+          renderPermissionManager();
+          renderAccessBadge();
+          updateControlState();
+        }
+      }
+
       function applyStaticTranslations() {
         document.documentElement.lang = currentLang;
         stickyContextTitleEl.textContent = t('loadingProjectsAndThreads');
@@ -1448,6 +1622,7 @@
         authPasswordInputEl.placeholder = t('passwordPlaceholder');
         authSubmitBtn.textContent = t('signIn');
         renderAccessBadge();
+        renderPermissionManager();
         updateProjectChipsVisibility();
       }
 
@@ -1725,7 +1900,7 @@
         authRequired = !!nextAuthRequired;
         authenticatedUsername = nextUsername || '';
         authPermissionMode = nextPermissionMode || 'control';
-        authCapabilities = nextCapabilities || { mode: authPermissionMode, canSendInput: true, canInterrupt: true, canUseTerminalControl: true };
+        authCapabilities = nextCapabilities || { mode: authPermissionMode, canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true };
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
         authOverlayEl.classList.toggle('visible', locked);
@@ -1733,6 +1908,7 @@
         logoutBtn.style.display = authRequired ? '' : 'none';
         logoutBtn.textContent = authenticatedUsername ? t('logoutWithUser', { username: authenticatedUsername }) : t('logout');
         renderAccessBadge();
+        renderPermissionManager();
         updateControlState();
         if (!locked && !sendingInput && !interruptingTurn && !sendingTerminalControl) {
           inputStatusEl.textContent = getPermissionHint(authPermissionMode);
@@ -1767,7 +1943,8 @@
       async function logoutSession() {
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
-        setAuthUiState(false, authRequired, '', 'control', { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true });
+        permissionManagerUsers = [];
+        setAuthUiState(false, authRequired, '', 'control', { mode: 'control', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true });
       }
 
       async function apiFetch(input, init = {}) {
@@ -2620,6 +2797,7 @@
           setOutputLockedMessage();
           return;
         }
+        await loadPermissionManager();
         await loadThreads();
         await loadSession();
         connectSessionEvents();
@@ -2681,6 +2859,7 @@
         try {
           await loginWithCredentials(authUsernameInputEl.value.trim(), authPasswordInputEl.value);
           authPasswordInputEl.value = '';
+          await loadPermissionManager();
           await loadThreads();
           await loadSession();
           connectSessionEvents();
@@ -2695,6 +2874,15 @@
         stopRefreshLoops();
         setOutputLockedMessage();
         statusEl.textContent = t('loggedOut');
+      });
+
+      permissionManagerListEl.addEventListener('click', async (event) => {
+        const button = event.target.closest('[data-permission-save]');
+        if (!button) return;
+        const username = button.dataset.permissionSave || '';
+        const select = permissionManagerListEl.querySelector(`[data-permission-user="${CSS.escape(username)}"]`);
+        if (!username || !select) return;
+        await savePermissionMode(username, select.value || 'control');
       });
 
       transcriptDensityEl.addEventListener('change', () => {

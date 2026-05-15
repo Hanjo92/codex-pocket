@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { timingSafeEqual, randomBytes, scryptSync } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -79,6 +79,10 @@ async function loadUsers() {
   }
 }
 
+async function saveUsers(users = []) {
+  await writeFile(usersPath, `${JSON.stringify({ users }, null, 2)}\n`, 'utf8');
+}
+
 function normalizePermissionMode(mode = '') {
   const normalized = String(mode || '').trim().toLowerCase();
   if (normalized === 'read-only' || normalized === 'readonly' || normalized === 'read_only') return 'read_only';
@@ -94,6 +98,7 @@ function getPermissionCapabilities(mode = DEFAULT_PERMISSION_MODE) {
     canSendInput: normalized === 'input_only' || normalized === 'control',
     canInterrupt: normalized === 'control',
     canUseTerminalControl: normalized === 'control',
+    canManageUsers: normalized === 'control',
   };
 }
 
@@ -1231,6 +1236,58 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, payload);
     } catch (error) {
       sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/users' && req.method === 'GET') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      const users = await loadUsers();
+      sendJson(res, 200, {
+        users: users.map((user) => ({
+          username: user.username,
+          permissionMode: normalizePermissionMode(user.permissionMode),
+        })),
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/users/mode' && req.method === 'POST') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      const body = await readJsonBody(req);
+      const username = String(body.username || '').trim();
+      const permissionMode = normalizePermissionMode(body.permissionMode || '');
+      if (!username) {
+        throw createError('Username is required', 400);
+      }
+      const users = await loadUsers();
+      const user = findUserByUsername(users, username);
+      if (!user) {
+        throw createError(`Unknown user: ${username}`, 404);
+      }
+      user.permissionMode = permissionMode;
+      user.updatedAtMs = Date.now();
+      await saveUsers(users);
+      sendJson(res, 200, {
+        ok: true,
+        user: {
+          username: user.username,
+          permissionMode,
+        },
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
     }
     return;
   }
