@@ -635,6 +635,31 @@
         background: rgba(255,255,255,0.02);
         overflow: hidden;
       }
+      .access-onboarding {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(148, 163, 184, 0.08);
+        padding: 12px;
+        display: grid;
+        gap: 6px;
+      }
+      .access-onboarding[hidden] {
+        display: none;
+      }
+      .access-onboarding-title {
+        font-size: 12px;
+        font-weight: 800;
+      }
+      .access-onboarding-body,
+      .access-onboarding-bullets {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .access-onboarding-bullets {
+        margin: 0;
+        padding-left: 18px;
+      }
       .permission-manager[hidden] {
         display: none;
       }
@@ -969,6 +994,15 @@
             <button id="logoutBtn" class="secondary" type="button" style="display:none">Log out</button>
           </div>
           <div class="status muted" id="status">Preparing connection…</div>
+          <section class="access-onboarding" id="accessOnboarding" hidden>
+            <div class="access-onboarding-title" id="accessOnboardingTitle">Read-only access</div>
+            <div class="access-onboarding-body" id="accessOnboardingBody">You can safely triage and read threads here, but sending input and controls are disabled for this account.</div>
+            <ul class="access-onboarding-bullets" id="accessOnboardingBullets">
+              <li>Open threads, read summaries, and scan attention sections.</li>
+              <li>Use filters, search, and project inbox shortcuts to triage work.</li>
+              <li>Ask an owner/admin if you need a stronger access mode.</li>
+            </ul>
+          </section>
           <details class="permission-manager" id="permissionManager" hidden>
             <summary>
               <span id="permissionManagerTitle">Manage access modes</span>
@@ -1068,6 +1102,10 @@
       const authBodyEl = document.getElementById('authBody');
       const authSubmitBtn = document.getElementById('authSubmitBtn');
       const accessBadgeEl = document.getElementById('accessBadge');
+      const accessOnboardingEl = document.getElementById('accessOnboarding');
+      const accessOnboardingTitleEl = document.getElementById('accessOnboardingTitle');
+      const accessOnboardingBodyEl = document.getElementById('accessOnboardingBody');
+      const accessOnboardingBulletsEl = document.getElementById('accessOnboardingBullets');
       const permissionManagerEl = document.getElementById('permissionManager');
       const permissionManagerTitleEl = document.getElementById('permissionManagerTitle');
       const permissionManagerSummaryMetaEl = document.getElementById('permissionManagerSummaryMeta');
@@ -1121,6 +1159,12 @@
           permissionHintReadOnly: 'This account can read threads only. Sending input and control actions are disabled.',
           permissionHintInputOnly: 'This account can send normal text input, but interrupt and terminal control are disabled.',
           permissionHintControl: 'This account can send input and use control actions.',
+          readOnlyOnboardingTitle: 'Read-only access',
+          readOnlyOnboardingBody: 'You can safely triage and read threads here, but sending input and controls are disabled for this account.',
+          readOnlyOnboardingBullets: 'Open threads, read summaries, and scan attention sections.|Use filters, search, and project inbox shortcuts to triage work.|Ask an owner/admin if you need a stronger access mode.',
+          inputOnlyOnboardingTitle: 'Input-only access',
+          inputOnlyOnboardingBody: 'You can send normal text turns, but interrupt and terminal control stay disabled in this mode.',
+          inputOnlyOnboardingBullets: 'Use this when lightweight browser replies are enough.|You can still triage with inbox sections and summaries.|Ask an owner if you need full control features.',
           sendBlockedByPermission: 'This account is in read-only mode, so sending input is disabled.',
           controlBlockedByPermission: 'This account cannot use interrupt or terminal controls in the current permission mode.',
           permissionManagerTitle: 'Manage users',
@@ -1272,6 +1316,12 @@
           permissionHintReadOnly: '이 계정은 스레드 읽기만 가능해. 입력 전송과 제어 동작은 막혀 있어.',
           permissionHintInputOnly: '이 계정은 일반 텍스트 입력은 보낼 수 있지만, interrupt와 터미널 제어는 막혀 있어.',
           permissionHintControl: '이 계정은 입력 전송과 제어 동작을 모두 사용할 수 있어.',
+          readOnlyOnboardingTitle: '읽기 전용 접근',
+          readOnlyOnboardingBody: '이 계정은 안전하게 triage/열람하는 용도야. 입력 전송과 제어 기능은 꺼져 있어.',
+          readOnlyOnboardingBullets: '스레드를 열고, 요약을 읽고, attention 섹션을 훑어볼 수 있어.|필터/검색/프로젝트 인박스 바로가기로 무엇을 봐야 할지 빠르게 정리할 수 있어.|더 강한 권한이 필요하면 owner/admin에게 요청해줘.',
+          inputOnlyOnboardingTitle: '입력 전용 접근',
+          inputOnlyOnboardingBody: '일반 텍스트 턴은 보낼 수 있지만, interrupt와 터미널 제어는 이 모드에서 계속 막혀 있어.',
+          inputOnlyOnboardingBullets: '가벼운 브라우저 답장만 필요할 때 적합해.|인박스 섹션과 요약으로 triage는 그대로 할 수 있어.|전체 제어가 필요하면 owner에게 권한 상향을 요청해줘.',
           sendBlockedByPermission: '이 계정은 읽기 전용 모드라서 입력 전송이 막혀 있어.',
           controlBlockedByPermission: '이 계정은 현재 권한 모드에서 interrupt/터미널 제어를 사용할 수 없어.',
           permissionManagerTitle: '사용자 권한 관리',
@@ -1502,6 +1552,21 @@
         accessBadgeEl.title = `${getRoleLabel(authRole)} · ${getPermissionHint(authPermissionMode)}`;
       }
 
+      function renderAccessOnboarding() {
+        if (!accessOnboardingEl) return;
+        const showReadOnly = authenticated && authPermissionMode === 'read_only';
+        const showInputOnly = authenticated && authPermissionMode === 'input_only';
+        const visible = showReadOnly || showInputOnly;
+        accessOnboardingEl.hidden = !visible;
+        if (!visible) return;
+        const title = showReadOnly ? t('readOnlyOnboardingTitle') : t('inputOnlyOnboardingTitle');
+        const body = showReadOnly ? t('readOnlyOnboardingBody') : t('inputOnlyOnboardingBody');
+        const bullets = String(showReadOnly ? t('readOnlyOnboardingBullets') : t('inputOnlyOnboardingBullets')).split('|').filter(Boolean);
+        accessOnboardingTitleEl.textContent = title;
+        accessOnboardingBodyEl.textContent = body;
+        accessOnboardingBulletsEl.innerHTML = bullets.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+      }
+
       function renderPermissionManager() {
         if (!permissionManagerEl) return;
         permissionManagerTitleEl.textContent = t('permissionManagerTitle');
@@ -1656,8 +1721,14 @@
           statusEl.textContent = t('preparingConnection');
           outputEl.textContent = t('outputConnecting');
         }
-        inputBoxEl.placeholder = t('inputPlaceholder');
-        inputStatusEl.textContent = t('inputStatusReady');
+        inputBoxEl.placeholder = authPermissionMode === 'read_only'
+          ? getPermissionHint('read_only')
+          : t('inputPlaceholder');
+        inputStatusEl.textContent = authPermissionMode === 'read_only'
+          ? t('permissionHintReadOnly')
+          : authPermissionMode === 'input_only'
+            ? t('permissionHintInputOnly')
+            : t('inputStatusReady');
         interruptBtn.textContent = interruptingTurn ? t('interruptBusy') : t('interrupt');
         sendInputBtn.textContent = sendingInput ? t('sending') : t('send');
         authTitleEl.textContent = t('authTitle');
@@ -1666,6 +1737,7 @@
         authPasswordInputEl.placeholder = t('passwordPlaceholder');
         authSubmitBtn.textContent = t('signIn');
         renderAccessBadge();
+        renderAccessOnboarding();
         renderPermissionManager();
         updateProjectChipsVisibility();
       }
@@ -1953,9 +2025,13 @@
         logoutBtn.style.display = authRequired ? '' : 'none';
         logoutBtn.textContent = authenticatedUsername ? t('logoutWithUser', { username: authenticatedUsername }) : t('logout');
         renderAccessBadge();
+        renderAccessOnboarding();
         renderPermissionManager();
         updateControlState();
         if (!locked && !sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          inputBoxEl.placeholder = authPermissionMode === 'read_only'
+            ? getPermissionHint('read_only')
+            : t('inputPlaceholder');
           inputStatusEl.textContent = getPermissionHint(authPermissionMode);
         }
         if (locked) {
@@ -2188,7 +2264,9 @@
         terminalStateBadgeEl.className = `terminal-state-badge ${ready && canControl ? 'ready' : 'waiting'}`;
 
         if (!canControl) {
-          terminalStateHintEl.textContent = t('controlBlockedByPermission');
+          terminalStateHintEl.textContent = authPermissionMode === 'read_only'
+            ? t('readOnlyOnboardingBody')
+            : t('controlBlockedByPermission');
           terminalStateMetaEl.textContent = getPermissionHint(authPermissionMode);
           terminalStateCardEl.style.borderColor = 'var(--line)';
           return;
