@@ -469,7 +469,8 @@ print(json.dumps([dict(row) for row in rows], ensure_ascii=False))
   const raw = await runPython(code, {
     CODEX_POCKET_MAX_THREADS: String(maxThreads),
   });
-  return JSON.parse(raw || '[]');
+  const threads = JSON.parse(raw || '[]');
+  return Promise.all(threads.map((thread) => enrichThreadState(thread)));
 }
 
 async function readThreadMeta(threadId) {
@@ -520,6 +521,15 @@ function extractTextFromMessageContent(content = []) {
     .trim();
 }
 
+function getEntryTimestampLabel(entry = {}) {
+  return entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }) : '--:--:--';
+}
+
 function getProjectLabel(cwd = '') {
   const normalized = String(cwd || '').replace(/\/$/, '');
   if (!normalized) return '(경로 없음)';
@@ -527,36 +537,59 @@ function getProjectLabel(cwd = '') {
   return parts[parts.length - 1] || normalized;
 }
 
-function formatRolloutEntry(entry) {
-  const timestamp = entry.timestamp ? new Date(entry.timestamp).toLocaleTimeString('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }) : '--:--:--';
+function buildTranscriptBlock(entry) {
+  const timestamp = getEntryTimestampLabel(entry);
 
   if (entry.type === 'response_item' && entry.payload?.type === 'message') {
     const role = entry.payload.role || 'assistant';
     const text = extractTextFromMessageContent(entry.payload.content);
     if (!text) return null;
-    return `[${timestamp}] ${role}\n${text}`;
+    return {
+      timestamp,
+      role,
+      label: role,
+      body: text,
+      text: `[${timestamp}] ${role}\n${text}`,
+      lowSignal: false,
+    };
   }
 
   if (entry.type === 'response_item' && entry.payload?.type === 'function_call_output') {
     const output = (entry.payload.output || '').trim();
     if (!output) return null;
-    return `[${timestamp}] tool output\n${output}`;
+    return {
+      timestamp,
+      role: 'tool',
+      label: 'tool output',
+      body: output,
+      text: `[${timestamp}] tool output\n${output}`,
+      lowSignal: true,
+    };
   }
 
   if (entry.type === 'response_item' && entry.payload?.type === 'function_call') {
     const name = entry.payload.name || 'tool';
-    return `[${timestamp}] tool call\n${name}`;
+    return {
+      timestamp,
+      role: 'tool',
+      label: 'tool call',
+      body: name,
+      text: `[${timestamp}] tool call\n${name}`,
+      lowSignal: true,
+    };
   }
 
   if (entry.type === 'event_msg' && entry.payload?.type === 'agent_message') {
     const text = (entry.payload.message || '').trim();
     if (!text) return null;
-    return `[${timestamp}] agent note\n${text}`;
+    return {
+      timestamp,
+      role: 'agent-note',
+      label: 'agent note',
+      body: text,
+      text: `[${timestamp}] agent note\n${text}`,
+      lowSignal: true,
+    };
   }
 
   return null;
@@ -564,7 +597,7 @@ function formatRolloutEntry(entry) {
 
 async function readThreadTranscript(rolloutPath) {
   const raw = await readFile(rolloutPath, 'utf8');
-  const entries = raw
+  const blocks = raw
     .split('\n')
     .filter(Boolean)
     .map((line) => {
@@ -574,11 +607,91 @@ async function readThreadTranscript(rolloutPath) {
         return null;
       }
     })
-    .filter(Boolean)
-    .map(formatRolloutEntry)
+    .map(buildTranscriptBlock)
     .filter(Boolean);
 
-  return entries.slice(-maxEntries);
+  const slicedBlocks = blocks.slice(-maxEntries);
+  return {
+    blocks: slicedBlocks,
+    entries: slicedBlocks.map((block) => block.text),
+  };
+}
+
+function createNormalizedState(type, reason = '') {
+  return { type, reason };
+}
+
+function normalizeStateText(value = '') {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function hasApprovalCue(text = '') {
+  return /(approve|approval|permission|confirm(?:ation)? required|pending approval|blocked pending approval|awaiting approval|requires approval|승인|허가|확인 필요)/i.test(text);
+}
+
+function hasFailureCue(text = '') {
+  return /(\bfailed\b|\berror\b|\bexception\b|\btraceback\b|\btimeout\b|timed out|unrecoverable|unable to continue|실패|오류|예외)/i.test(text);
+}
+
+function hasWaitingInputCue(text = '') {
+  return /(\?$|\bwhich\b|\bwhat should\b|\bwhat do you want\b|\bplease confirm\b|\bi need\b.+\bbefore i can continue\b|\blet me know\b|\bchoose\b|\bmissing information\b|어떻게 할까|무엇을 원해|확인해줘|선택해줘|입력이 필요)/i.test(text);
+}
+
+function deriveThreadState({ blocks = [], terminalInteraction = null } = {}) {
+  if (terminalInteraction?.available) {
+    return createNormalizedState('running', 'live terminal interaction available');
+  }
+
+  const recentBlocks = blocks.slice(-8);
+  const latestAssistant = [...recentBlocks].reverse().find((block) => block?.role === 'assistant' && block.body);
+  const latestSignal = [...recentBlocks].reverse().find((block) => block?.body);
+  const latestTexts = [latestAssistant, latestSignal]
+    .filter(Boolean)
+    .map((block) => normalizeStateText(block.body));
+
+  if (latestTexts.some((text) => hasApprovalCue(text))) {
+    return createNormalizedState('waiting_approval', 'approval cue in recent activity');
+  }
+
+  if (latestTexts.some((text) => hasFailureCue(text))) {
+    return createNormalizedState('failed', 'failure cue in recent activity');
+  }
+
+  if (latestTexts.some((text) => hasWaitingInputCue(text))) {
+    return createNormalizedState('waiting_input', 'assistant appears to be waiting on user follow-up');
+  }
+
+  if (latestAssistant?.body) {
+    return createNormalizedState('completed', 'latest assistant response appears complete');
+  }
+
+  if (latestSignal?.body) {
+    return createNormalizedState('completed', 'recent activity exists without an actionable blocker');
+  }
+
+  return createNormalizedState('unknown', 'no reliable recent signal');
+}
+
+async function enrichThreadState(thread = {}) {
+  try {
+    const transcript = await readThreadTranscript(thread.rollout_path);
+    const terminalInteraction = getTerminalInteractionState(thread.id);
+    return {
+      ...thread,
+      state: deriveThreadState({
+        blocks: transcript.blocks,
+        terminalInteraction,
+      }),
+    };
+  } catch {
+    return {
+      ...thread,
+      state: createNormalizedState('unknown', 'failed to read transcript'),
+    };
+  }
 }
 
 function getTerminalInteractionState(threadId) {
@@ -601,6 +714,7 @@ function toPublicThread(thread = {}) {
     updatedAtMs: thread.updated_at_ms,
     createdAtMs: thread.created_at_ms,
     threadSource: thread.thread_source || null,
+    state: thread.state?.type || 'unknown',
   };
 }
 
@@ -609,8 +723,12 @@ async function getSessionPayload(threadId) {
     readThreadMeta(threadId),
     listThreads(),
   ]);
-  const entries = await readThreadTranscript(thread.rollout_path);
+  const transcript = await readThreadTranscript(thread.rollout_path);
   const terminalInteraction = getTerminalInteractionState(thread.id);
+  const state = deriveThreadState({
+    blocks: transcript.blocks,
+    terminalInteraction,
+  });
 
   return {
     mode: 'rollout',
@@ -621,14 +739,15 @@ async function getSessionPayload(threadId) {
       projectLabel: getProjectLabel(thread.cwd),
       updatedAtMs: thread.updated_at_ms,
       createdAtMs: thread.created_at_ms,
+      state: state.type,
     },
     threads: threads.map(toPublicThread),
     quickControls: {
       interrupt: true,
       terminal: terminalInteraction,
     },
-    output: entries.join('\n\n'),
-    entryCount: entries.length,
+    output: transcript.entries.join('\n\n'),
+    entryCount: transcript.entries.length,
   };
 }
 
