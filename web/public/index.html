@@ -1270,7 +1270,9 @@
           inputOnlyOnboardingBody: 'You can send normal text turns, but interrupt and terminal control stay disabled in this mode.',
           inputOnlyOnboardingBullets: 'Use this when lightweight browser replies are enough.|You can still triage with inbox sections and summaries.|Ask an owner if you need full control features.',
           sendBlockedByPermission: 'This account is in read-only mode, so sending input is disabled.',
+          sendBlockedByThreadRestriction: 'This thread is visible, but this account is not allowed to send input to it.',
           controlBlockedByPermission: 'This account cannot use interrupt or terminal controls in the current permission mode.',
+          controlBlockedByThreadRestriction: 'This thread is visible, but this account is not allowed to use control actions on it.',
           permissionManagerTitle: 'Manage users',
           permissionManagerSummaryMeta: 'owner/admin users only',
           permissionManagerMeta: 'Owners can change roles and modes. Admins can change member access modes only.',
@@ -1283,18 +1285,23 @@
           permissionManagerSaveFailed: 'Save failed: {message}',
           scopeProjectsLabel: 'Allowed projects',
           scopeThreadsLabel: 'Allowed threads',
+          scopeActionThreadsLabel: 'Threads allowed for input/control',
           scopeProjectsPlaceholder: 'Type a path prefix manually',
           scopeProjectPresetPlaceholder: 'Pick a recent project path',
           scopeThreadsPlaceholder: 'Paste a thread id manually',
+          scopeThreadActionPlaceholder: 'Paste a thread id for action access',
           scopeThreadPresetPlaceholder: 'Pick a recent thread',
+          scopeActionThreadPresetPlaceholder: 'Pick a thread that can stay interactive',
           scopeAdd: 'Add',
           scopeAddSelected: 'Add selected',
           scopeEmptyProjects: 'No project restriction',
           scopeEmptyThreads: 'No thread restriction',
+          scopeEmptyActionThreads: 'No action-thread restriction',
           scopeManualProjectHint: 'Manual path-prefix fallback',
           scopeManualThreadHint: 'Manual thread id fallback',
+          scopeManualActionThreadHint: 'Visible threads outside this list become read-only in the session view',
           scopeSummaryNone: 'Scope: full account visibility',
-          scopeSummaryRestricted: 'Scope: projects [{projects}] · threads [{threads}]',
+          scopeSummaryRestricted: 'Scope: projects [{projects}] · threads [{threads}] · actions [{actions}]',
           preparingConnection: 'Preparing connection…',
           inputPlaceholder: 'Type input to send to the selected Codex thread',
           terminalWaiting: 'No terminal input target',
@@ -1442,7 +1449,9 @@
           inputOnlyOnboardingBody: '일반 텍스트 턴은 보낼 수 있지만, interrupt와 터미널 제어는 이 모드에서 계속 막혀 있어.',
           inputOnlyOnboardingBullets: '가벼운 브라우저 답장만 필요할 때 적합해.|인박스 섹션과 요약으로 triage는 그대로 할 수 있어.|전체 제어가 필요하면 owner에게 권한 상향을 요청해줘.',
           sendBlockedByPermission: '이 계정은 읽기 전용 모드라서 입력 전송이 막혀 있어.',
+          sendBlockedByThreadRestriction: '이 스레드는 볼 수는 있지만, 이 계정으로는 입력을 보낼 수 없어.',
           controlBlockedByPermission: '이 계정은 현재 권한 모드에서 interrupt/터미널 제어를 사용할 수 없어.',
+          controlBlockedByThreadRestriction: '이 스레드는 볼 수는 있지만, 이 계정으로는 제어 동작을 사용할 수 없어.',
           permissionManagerTitle: '사용자 권한 관리',
           permissionManagerSummaryMeta: 'owner/admin 계정만 사용 가능',
           permissionManagerMeta: 'owner는 role과 mode를 바꿀 수 있고, admin은 member의 access mode만 바꿀 수 있어.',
@@ -1455,18 +1464,23 @@
           permissionManagerSaveFailed: '저장 실패: {message}',
           scopeProjectsLabel: '허용 프로젝트',
           scopeThreadsLabel: '허용 스레드',
+          scopeActionThreadsLabel: '입력/제어 허용 스레드',
           scopeProjectsPlaceholder: '경로 prefix 직접 입력',
           scopeProjectPresetPlaceholder: '최근 프로젝트 경로 선택',
           scopeThreadsPlaceholder: 'thread id 직접 입력',
+          scopeThreadActionPlaceholder: 'action 허용 thread id 직접 입력',
           scopeThreadPresetPlaceholder: '최근 스레드 선택',
+          scopeActionThreadPresetPlaceholder: '상호작용 허용 스레드 선택',
           scopeAdd: '추가',
           scopeAddSelected: '선택 추가',
           scopeEmptyProjects: '프로젝트 제한 없음',
           scopeEmptyThreads: '스레드 제한 없음',
+          scopeEmptyActionThreads: 'action 스레드 제한 없음',
           scopeManualProjectHint: '직접 path prefix 넣기',
           scopeManualThreadHint: '직접 thread id 넣기',
+          scopeManualActionThreadHint: '이 목록 밖의 visible thread는 세션 화면에서 읽기 전용이 돼',
           scopeSummaryNone: '범위: 계정 전체 표시',
-          scopeSummaryRestricted: '범위: projects [{projects}] · threads [{threads}]',
+          scopeSummaryRestricted: '범위: projects [{projects}] · threads [{threads}] · actions [{actions}]',
           preparingConnection: '연결 준비 중…',
           inputPlaceholder: '선택한 Codex 스레드에 보낼 입력을 적어줘',
           terminalWaiting: '터미널 입력 대기 중 아님',
@@ -1581,7 +1595,7 @@
       let authPermissionMode = 'control';
       let authRole = 'owner';
       let authCapabilities = { mode: 'control', role: 'owner', canSendInput: true, canInterrupt: true, canUseTerminalControl: true, canManageUsers: true, canManageRoles: true };
-      let authScope = { projectPrefixes: [], threadIds: [] };
+      let authScope = { projectPrefixes: [], threadIds: [], actionThreadIds: [] };
       let permissionManagerUsers = [];
       let permissionManagerScopeDrafts = {};
       let permissionManagerScopeOptions = { projects: [] };
@@ -1632,6 +1646,7 @@
       let sendingTerminalControl = false;
       const activeTurnIds = new Map();
       let lastQuickControls = { terminal: { available: false } };
+      let selectedThreadAccess = { canSendInput: true, canInterrupt: true, canUseTerminalControl: true, actionRestricted: false };
 
       function t(key, vars = {}) {
         const table = translations[currentLang] || translations.en;
@@ -1694,12 +1709,14 @@
       function getScopeSummary(scope = authScope) {
         const projects = Array.isArray(scope?.projectPrefixes) ? scope.projectPrefixes : [];
         const threads = Array.isArray(scope?.threadIds) ? scope.threadIds : [];
-        if (!projects.length && !threads.length) {
+        const actions = Array.isArray(scope?.actionThreadIds) ? scope.actionThreadIds : [];
+        if (!projects.length && !threads.length && !actions.length) {
           return t('scopeSummaryNone');
         }
         return t('scopeSummaryRestricted', {
           projects: projects.join(', ') || '-',
           threads: threads.join(', ') || '-',
+          actions: actions.map(getThreadScopeDisplay).join(', ') || '-',
         });
       }
 
@@ -1707,7 +1724,7 @@
         if (!accessOnboardingEl) return;
         const showReadOnly = authenticated && authPermissionMode === 'read_only';
         const showInputOnly = authenticated && authPermissionMode === 'input_only';
-        const visible = showReadOnly || showInputOnly || (authenticated && ((authScope?.projectPrefixes?.length || 0) || (authScope?.threadIds?.length || 0)));
+        const visible = showReadOnly || showInputOnly || (authenticated && ((authScope?.projectPrefixes?.length || 0) || (authScope?.threadIds?.length || 0) || (authScope?.actionThreadIds?.length || 0)));
         accessOnboardingEl.hidden = !visible;
         if (!visible) return;
         const title = showReadOnly ? t('readOnlyOnboardingTitle') : showInputOnly ? t('inputOnlyOnboardingTitle') : t('accessMode', { role: getRoleLabel(authRole), mode: getPermissionLabel(authPermissionMode) });
@@ -1761,6 +1778,7 @@
         const draft = {
           projectPrefixes: Array.isArray(user?.scope?.projectPrefixes) ? [...user.scope.projectPrefixes] : [],
           threadIds: Array.isArray(user?.scope?.threadIds) ? [...user.scope.threadIds] : [],
+          actionThreadIds: Array.isArray(user?.scope?.actionThreadIds) ? [...user.scope.actionThreadIds] : [],
         };
         permissionManagerScopeDrafts[username] = draft;
         return draft;
@@ -1878,6 +1896,22 @@
                     <button type="button" class="secondary" data-scope-add="${escapeHtml(user.username)}" data-scope-type="thread" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAdd'))}</button>
                   </div>
                 </div>
+                <div class="permission-scope-group">
+                  <div class="permission-scope-label">${escapeHtml(t('scopeActionThreadsLabel'))}</div>
+                  <div class="permission-scope-chip-list">${renderScopeChipList(draft.actionThreadIds, t('scopeEmptyActionThreads'), user.username, 'action-thread', busy || !manageable, getThreadScopeDisplay)}</div>
+                  <div class="permission-scope-input-row">
+                    <select data-scope-action-thread-select="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
+                      <option value="">${escapeHtml(t('scopeActionThreadPresetPlaceholder'))}</option>
+                      ${threadOptions.map((thread) => `<option value="${escapeHtml(thread.id)}">${escapeHtml(thread.label)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="secondary" data-scope-add-select="${escapeHtml(user.username)}" data-scope-type="action-thread" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAddSelected'))}</button>
+                  </div>
+                  <div class="permission-scope-label">${escapeHtml(t('scopeManualActionThreadHint'))}</div>
+                  <div class="permission-scope-input-row">
+                    <input type="text" data-scope-add-input="${escapeHtml(user.username)}" data-scope-type="action-thread" placeholder="${escapeHtml(t('scopeThreadActionPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
+                    <button type="button" class="secondary" data-scope-add="${escapeHtml(user.username)}" data-scope-type="action-thread" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAdd'))}</button>
+                  </div>
+                </div>
               </div>
             </div>
           `;
@@ -1911,6 +1945,7 @@
           permissionManagerScopeDrafts = Object.fromEntries(permissionManagerUsers.map((user) => [user.username, {
             projectPrefixes: Array.isArray(user.scope?.projectPrefixes) ? [...user.scope.projectPrefixes] : [],
             threadIds: Array.isArray(user.scope?.threadIds) ? [...user.scope.threadIds] : [],
+            actionThreadIds: Array.isArray(user.scope?.actionThreadIds) ? [...user.scope.actionThreadIds] : [],
           }]));
           renderPermissionManager();
         } catch (error) {
@@ -1940,6 +1975,8 @@
         const draft = getScopeDraft(username);
         if (type === 'thread') {
           draft.threadIds = normalizeScopeItems([...(draft.threadIds || []), normalized]);
+        } else if (type === 'action-thread') {
+          draft.actionThreadIds = normalizeScopeItems([...(draft.actionThreadIds || []), normalized]);
         } else {
           draft.projectPrefixes = normalizeScopeItems([...(draft.projectPrefixes || []), normalized]);
         }
@@ -1951,6 +1988,8 @@
         const draft = getScopeDraft(username);
         if (type === 'thread') {
           draft.threadIds = (draft.threadIds || []).filter((item) => item !== normalized);
+        } else if (type === 'action-thread') {
+          draft.actionThreadIds = (draft.actionThreadIds || []).filter((item) => item !== normalized);
         } else {
           draft.projectPrefixes = (draft.projectPrefixes || []).filter((item) => item !== normalized);
         }
@@ -1975,7 +2014,7 @@
             const scopeResponse = await apiFetch('/api/users/scope', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ username, projectPrefixes: scope.projectPrefixes || [], threadIds: scope.threadIds || [] }),
+              body: JSON.stringify({ username, projectPrefixes: scope.projectPrefixes || [], threadIds: scope.threadIds || [], actionThreadIds: scope.actionThreadIds || [] }),
             });
             const scopeData = await scopeResponse.json();
             if (!scopeResponse.ok) {
@@ -2001,6 +2040,7 @@
           permissionManagerScopeDrafts[username] = {
             projectPrefixes: Array.isArray(nextUser.scope?.projectPrefixes) ? [...nextUser.scope.projectPrefixes] : [],
             threadIds: Array.isArray(nextUser.scope?.threadIds) ? [...nextUser.scope.threadIds] : [],
+            actionThreadIds: Array.isArray(nextUser.scope?.actionThreadIds) ? [...nextUser.scope.actionThreadIds] : [],
           };
           if (username === authenticatedUsername) {
             authPermissionMode = nextUser.permissionMode || permissionMode;
@@ -2354,8 +2394,9 @@
         authenticatedUsername = nextUsername || '';
         authPermissionMode = nextPermissionMode || 'control';
         authRole = nextRole || 'owner';
-        authScope = nextScope || { projectPrefixes: [], threadIds: [] };
+        authScope = nextScope || { projectPrefixes: [], threadIds: [], actionThreadIds: [] };
         authCapabilities = nextCapabilities || buildCapabilities(authPermissionMode, authRole);
+        selectedThreadAccess = { canSendInput: !!authCapabilities.canSendInput, canInterrupt: !!authCapabilities.canInterrupt, canUseTerminalControl: !!authCapabilities.canUseTerminalControl, actionRestricted: false };
         const locked = authRequired && !authenticated;
         document.body.classList.toggle('auth-locked', locked);
         authOverlayEl.classList.toggle('visible', locked);
@@ -2403,7 +2444,7 @@
         await fetch('/auth/logout', { method: 'POST' });
         closeSessionEventSource();
         permissionManagerUsers = [];
-        setAuthUiState(false, authRequired, '', 'control', 'owner', { projectPrefixes: [], threadIds: [] }, buildCapabilities('control', 'owner'));
+        setAuthUiState(false, authRequired, '', 'control', 'owner', { projectPrefixes: [], threadIds: [], actionThreadIds: [] }, buildCapabilities('control', 'owner'));
       }
 
       async function apiFetch(input, init = {}) {
@@ -2413,7 +2454,7 @@
         });
 
         if (response.status === 401) {
-          setAuthUiState(false, true, '', 'control', 'owner', { projectPrefixes: [], threadIds: [] }, buildCapabilities('control', 'owner'));
+          setAuthUiState(false, true, '', 'control', 'owner', { projectPrefixes: [], threadIds: [], actionThreadIds: [] }, buildCapabilities('control', 'owner'));
         }
 
         return response;
@@ -2597,15 +2638,19 @@
       function renderTerminalState() {
         const terminal = lastQuickControls?.terminal || { available: false };
         const ready = !!terminal.available;
-        const canControl = !!authCapabilities?.canInterrupt;
+        const canControl = !!selectedThreadAccess?.canInterrupt;
         terminalStateBadgeEl.textContent = ready ? t('terminalReady') : t('terminalWaiting');
         terminalStateBadgeEl.className = `terminal-state-badge ${ready && canControl ? 'ready' : 'waiting'}`;
 
         if (!canControl) {
-          terminalStateHintEl.textContent = authPermissionMode === 'read_only'
-            ? t('readOnlyOnboardingBody')
-            : t('controlBlockedByPermission');
-          terminalStateMetaEl.textContent = getPermissionHint(authPermissionMode);
+          terminalStateHintEl.textContent = selectedThreadAccess?.actionRestricted
+            ? t('controlBlockedByThreadRestriction')
+            : authPermissionMode === 'read_only'
+              ? t('readOnlyOnboardingBody')
+              : t('controlBlockedByPermission');
+          terminalStateMetaEl.textContent = selectedThreadAccess?.actionRestricted
+            ? getScopeSummary({ actionThreadIds: authScope?.actionThreadIds || [] })
+            : getPermissionHint(authPermissionMode);
           terminalStateCardEl.style.borderColor = 'var(--line)';
           return;
         }
@@ -2628,8 +2673,8 @@
       function updateControlState() {
         const busy = sendingInput || interruptingTurn || sendingTerminalControl;
         const terminalAvailable = !!lastQuickControls?.terminal?.available;
-        const canSendInput = !!authCapabilities?.canSendInput;
-        const canControl = !!authCapabilities?.canInterrupt;
+        const canSendInput = !!selectedThreadAccess?.canSendInput;
+        const canControl = !!selectedThreadAccess?.canInterrupt;
         inputBoxEl.disabled = sendingInput || !canSendInput;
         sendInputBtn.disabled = busy || !canSendInput;
         interruptBtn.disabled = busy || !selectedThreadId || !canControl;
@@ -2638,6 +2683,20 @@
         ctrlCBtn.disabled = busy || !terminalAvailable || !canControl;
         sendInputBtn.textContent = sendingInput ? t('sending') : t('send');
         interruptBtn.textContent = interruptingTurn ? t('interruptBusy') : t('interrupt');
+        if (!sendingInput && !interruptingTurn && !sendingTerminalControl) {
+          inputBoxEl.placeholder = !selectedThreadAccess?.canSendInput && selectedThreadAccess?.actionRestricted
+            ? t('sendBlockedByThreadRestriction')
+            : authPermissionMode === 'read_only'
+              ? getPermissionHint('read_only')
+              : t('inputPlaceholder');
+          inputStatusEl.textContent = !selectedThreadAccess?.canSendInput && selectedThreadAccess?.actionRestricted
+            ? t('sendBlockedByThreadRestriction')
+            : authPermissionMode === 'read_only'
+              ? t('permissionHintReadOnly')
+              : authPermissionMode === 'input_only'
+                ? t('permissionHintInputOnly')
+                : t('inputStatusReady');
+        }
         renderTerminalState();
       }
 
@@ -3096,6 +3155,7 @@
           const changed = thread.updatedAtMs && thread.updatedAtMs !== lastSessionUpdatedAt;
           lastSessionUpdatedAt = thread.updatedAtMs || lastSessionUpdatedAt;
           lastQuickControls = data.quickControls || { terminal: { available: false } };
+          selectedThreadAccess = data.threadAccess || { canSendInput: true, canInterrupt: true, canUseTerminalControl: true, actionRestricted: false };
           statusEl.textContent = t('recentUpdateStatus', {
             time: formatDateTime(thread.updatedAtMs),
             count: data.entryCount || 0,
@@ -3111,6 +3171,7 @@
           threadStateBadgeEl.textContent = getStateLabel('unknown');
           threadStateBadgeEl.className = `state-badge ${getStateClass('unknown')}`;
           lastActiveThread = null;
+          selectedThreadAccess = { canSendInput: !!authCapabilities?.canSendInput, canInterrupt: !!authCapabilities?.canInterrupt, canUseTerminalControl: !!authCapabilities?.canUseTerminalControl, actionRestricted: false };
           renderStickyContext(null);
           outputEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
         }
@@ -3118,8 +3179,8 @@
 
       async function sendInput() {
         const text = inputBoxEl.value.trim();
-        if (!authCapabilities?.canSendInput) {
-          inputStatusEl.textContent = t('sendBlockedByPermission');
+        if (!selectedThreadAccess?.canSendInput) {
+          inputStatusEl.textContent = selectedThreadAccess?.actionRestricted ? t('sendBlockedByThreadRestriction') : t('sendBlockedByPermission');
           return;
         }
         if (!selectedThreadId) {
@@ -3160,8 +3221,8 @@
       }
 
       async function sendTerminalControl(action, label) {
-        if (!authCapabilities?.canInterrupt) {
-          inputStatusEl.textContent = t('controlBlockedByPermission');
+        if (!selectedThreadAccess?.canInterrupt) {
+          inputStatusEl.textContent = selectedThreadAccess?.actionRestricted ? t('controlBlockedByThreadRestriction') : t('controlBlockedByPermission');
           return;
         }
         if (!selectedThreadId) {
@@ -3202,8 +3263,8 @@
       }
 
       async function interruptTurn() {
-        if (!authCapabilities?.canInterrupt) {
-          inputStatusEl.textContent = t('controlBlockedByPermission');
+        if (!selectedThreadAccess?.canInterrupt) {
+          inputStatusEl.textContent = selectedThreadAccess?.actionRestricted ? t('controlBlockedByThreadRestriction') : t('controlBlockedByPermission');
           return;
         }
         if (!selectedThreadId) {
@@ -3363,7 +3424,9 @@
           const type = addSelectButton.dataset.scopeType || 'thread';
           const select = permissionManagerListEl.querySelector(type === 'project'
             ? `[data-scope-project-select="${CSS.escape(username)}"]`
-            : `[data-scope-thread-select="${CSS.escape(username)}"]`);
+            : type === 'action-thread'
+              ? `[data-scope-action-thread-select="${CSS.escape(username)}"]`
+              : `[data-scope-thread-select="${CSS.escape(username)}"]`);
           addScopeDraftValue(username, type, select ? select.value : '');
           if (select) select.value = '';
           renderPermissionManager();
@@ -3380,6 +3443,7 @@
         await savePermissionMode(username, select.value || 'control', roleSelect ? (roleSelect.value || 'member') : null, {
           projectPrefixes: normalizeScopeItems(draft.projectPrefixes || []),
           threadIds: normalizeScopeItems(draft.threadIds || []),
+          actionThreadIds: normalizeScopeItems(draft.actionThreadIds || []),
         });
       });
 

@@ -30,6 +30,6 @@
 
 1. improve transcript modeling beyond rollout parsing
 2. make terminal-interaction state surface faster/more reliably in the UI
-3. add narrower session-level restrictions where account scope is still too coarse
+3. tighten security and deployment guidance for broader self-hosted use
 4. add thread pinning/favorites or stronger filtering if the list grows
-5. tighten security and deployment guidance for broader self-hosted use
+5. polish delegated read-only/restricted review flows with stronger context cues where needed

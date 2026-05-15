@@ -80,10 +80,12 @@ Shipped foundation so far:
   - human-readable thread selection
   - real path-prefix project presets
   - inline save feedback in the permission manager
+- narrower session-level interaction boundaries:
+  - optional per-user action-thread allowlist
+  - visible-but-read-only session fallback outside that allowlist
 
 Remaining work in this area:
 
-- narrower session-level affordances where full thread visibility is still too broad
 - stronger docs/hardening guidance for shared internal deployments
 - decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model
 

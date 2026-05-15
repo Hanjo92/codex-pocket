@@ -25,6 +25,7 @@
     "user:set-role": "node server/cli.js user set-role",
     "user:set-projects": "node server/cli.js user set-projects",
     "user:set-threads": "node server/cli.js user set-threads",
+    "user:set-action-threads": "node server/cli.js user set-action-threads",
     "user:clear-scope": "node server/cli.js user clear-scope"
   }
 }

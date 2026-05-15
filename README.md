@@ -233,6 +233,7 @@ npm run user:set-mode -- <username> <read_only|input_only|control>
 npm run user:set-role -- <username> <member|admin|owner>
 npm run user:set-projects -- <username> </allowed/project,/another/project>
 npm run user:set-threads -- <username> <thread-id-1,thread-id-2>
+npm run user:set-action-threads -- <username> <thread-id-1,thread-id-2>
 npm run user:clear-scope -- <username>
 ```
 
@@ -250,7 +251,10 @@ Browser access now has three layers:
   - `control` — can use interrupt/terminal controls
 - **visibility scope**
   - optional per-user `projectPrefixes` and `threadIds`
-  - when set, the server only exposes matching threads/sessions and blocks input/control on anything outside that scope
+  - when set, the server only exposes matching threads/sessions
+- **session-level action scope**
+  - optional per-user `actionThreadIds`
+  - when set, matching threads stay interactive while other visible threads become read-only in the session view
 
 Example: create a low-risk triage account that can only see one project:
 
@@ -337,7 +341,7 @@ For deeper notes:
 - keep the Codex app-server bound locally when possible
 - create at least one local browser login user before opening access beyond localhost
 - browser login users are created locally on the Codex host via CLI; they are not self-service from the web UI
-- use lower roles/modes and optional visibility scope for shared/internal viewers instead of handing out full control by default
+- use lower roles/modes plus optional visibility/action scope for shared/internal viewers instead of handing out full control by default
 - browser-facing API payloads are intentionally reduced so normal thread/session reads do not expose host absolute paths like `cwd` or rollout file locations
 - anyone who can reach the web UI and satisfy auth may still inspect allowed transcripts and actions inside their granted scope, so treat network exposure carefully
 

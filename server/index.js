@@ -136,6 +136,7 @@ function getUserScope(user = null) {
   return {
     projectPrefixes: normalizeScopeList(user?.scope?.projectPrefixes),
     threadIds: normalizeScopeList(user?.scope?.threadIds),
+    actionThreadIds: normalizeScopeList(user?.scope?.actionThreadIds),
   };
 }
 
@@ -151,6 +152,32 @@ function isThreadAllowedForScope(thread = {}, scope = null) {
   const allowedByThread = scope.threadIds.includes(threadId);
   const allowedByProject = scope.projectPrefixes.some((prefix) => cwd.startsWith(prefix) || projectLabel === prefix);
   return allowedByThread || allowedByProject;
+}
+
+function isThreadAllowedForActions(thread = {}, scope = null) {
+  const actionThreadIds = normalizeScopeList(scope?.actionThreadIds);
+  if (!actionThreadIds.length) return true;
+  const threadId = String(thread?.id || '').trim();
+  return actionThreadIds.includes(threadId);
+}
+
+function getThreadCapabilities(authState, thread = {}) {
+  const base = authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE, DEFAULT_USER_ROLE);
+  const actionAllowed = isThreadAllowedForActions(thread, authState?.scope);
+  if (actionAllowed) {
+    return {
+      canSendInput: !!base.canSendInput,
+      canInterrupt: !!base.canInterrupt,
+      canUseTerminalControl: !!base.canUseTerminalControl,
+      actionRestricted: false,
+    };
+  }
+  return {
+    canSendInput: false,
+    canInterrupt: false,
+    canUseTerminalControl: false,
+    actionRestricted: true,
+  };
 }
 
 function sanitizeUser(user = null, users = []) {
@@ -256,7 +283,7 @@ function sendPermissionDenied(res, authState, capability) {
     permissionDenied: true,
     permissionMode: authState?.permissionMode || DEFAULT_PERMISSION_MODE,
     role: authState?.role || DEFAULT_USER_ROLE,
-    scope: authState?.scope || { projectPrefixes: [], threadIds: [] },
+    scope: authState?.scope || { projectPrefixes: [], threadIds: [], actionThreadIds: [] },
     capabilities: authState?.capabilities || getPermissionCapabilities(DEFAULT_PERMISSION_MODE, DEFAULT_USER_ROLE),
   });
 }
@@ -968,7 +995,8 @@ async function tryReadRuntimeThread(threadId, includeTurns = false) {
   }
 }
 
-async function getSessionPayload(threadId, scope = null) {
+async function getSessionPayload(threadId, authState = null) {
+  const scope = authState?.scope || null;
   const threads = await listThreads(scope);
   const resolvedThreadId = threadId || threads[0]?.id || '';
   if (!resolvedThreadId) {
@@ -1005,7 +1033,9 @@ async function getSessionPayload(threadId, scope = null) {
       restricted: hasUserScope(scope),
       projectPrefixes: scope?.projectPrefixes || [],
       threadIds: scope?.threadIds || [],
+      actionThreadIds: scope?.actionThreadIds || [],
     },
+    threadAccess: getThreadCapabilities(authState, thread),
     quickControls: {
       interrupt: true,
       terminal: terminalInteraction,
@@ -1244,7 +1274,7 @@ const server = http.createServer(async (req, res) => {
       username: state.username,
       permissionMode: state.permissionMode,
       role: state.role,
-      scope: state.scope || { projectPrefixes: [], threadIds: [] },
+      scope: state.scope || { projectPrefixes: [], threadIds: [], actionThreadIds: [] },
       capabilities: state.capabilities,
     });
     return;
@@ -1342,6 +1372,7 @@ const server = http.createServer(async (req, res) => {
           restricted: hasUserScope(authState?.scope),
           projectPrefixes: authState?.scope?.projectPrefixes || [],
           threadIds: authState?.scope?.threadIds || [],
+          actionThreadIds: authState?.scope?.actionThreadIds || [],
         },
       });
     } catch (error) {
@@ -1352,7 +1383,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/session') {
     try {
-      const payload = await getSessionPayload(url.searchParams.get('threadId'), authState?.scope);
+      const payload = await getSessionPayload(url.searchParams.get('threadId'), authState);
       sendJson(res, 200, payload);
     } catch (error) {
       sendJson(res, error.statusCode || 500, {
@@ -1438,6 +1469,7 @@ const server = http.createServer(async (req, res) => {
       user.scope = {
         projectPrefixes: normalizeScopeList(body.projectPrefixes),
         threadIds: normalizeScopeList(body.threadIds),
+        actionThreadIds: normalizeScopeList(body.actionThreadIds),
       };
       user.updatedAtMs = Date.now();
       await saveUsers(users);
@@ -1499,6 +1531,9 @@ const server = http.createServer(async (req, res) => {
       if (!isThreadAllowedForScope(thread, authState?.scope)) {
         throw createError(`Thread is outside this account's allowed scope`, 403);
       }
+      if (!isThreadAllowedForActions(thread, authState?.scope)) {
+        throw createError(`This account can view this thread but cannot send input to it`, 403);
+      }
       const result = await sendInputToThread(body.threadId, body.text);
       sendJson(res, 200, result);
     } catch (error) {
@@ -1537,6 +1572,9 @@ const server = http.createServer(async (req, res) => {
       if (!isThreadAllowedForScope(thread, authState?.scope)) {
         throw createError(`Thread is outside this account's allowed scope`, 403);
       }
+      if (!isThreadAllowedForActions(thread, authState?.scope)) {
+        throw createError(`This account can view this thread but cannot use control actions on it`, 403);
+      }
       const result = await interruptThread(body.threadId, body.turnId);
       sendJson(res, 200, result);
     } catch (error) {
@@ -1555,6 +1593,9 @@ const server = http.createServer(async (req, res) => {
       const thread = await readThreadMeta(body.threadId);
       if (!isThreadAllowedForScope(thread, authState?.scope)) {
         throw createError(`Thread is outside this account's allowed scope`, 403);
+      }
+      if (!isThreadAllowedForActions(thread, authState?.scope)) {
+        throw createError(`This account can view this thread but cannot use control actions on it`, 403);
       }
       const result = await sendTerminalControl(body.threadId, body.action, body.turnId);
       sendJson(res, 200, result);
