@@ -2,9 +2,12 @@
 
 ![codex-pocket banner](docs/assets/codex-pocket-banner.png)
 
-> A lightweight browser viewer/controller for Codex sessions.
+> A low-noise browser dashboard for triaging, reading, and lightly steering Codex work.
 
-`codex-pocket` gives you a focused remote browser surface for Codex: pick a thread, read the transcript, send short input, interrupt a turn, and use a few safe quick controls — without remoting an entire desktop.
+`codex-pocket` is not trying to be full remote desktop for Codex.
+It is aiming to be the fastest way to scan many threads, read what matters, and send lightweight follow-ups from any browser.
+
+Pick a thread, read the transcript, send short input, interrupt a turn, and use a few safe quick controls — without remoting an entire desktop.
 
 ---
 
@@ -20,6 +23,16 @@ You just want to:
 - 📱 do all of that comfortably from a phone browser
 
 That is exactly the shape `codex-pocket` is aiming for.
+
+## 🎯 Product lens
+
+If the official Codex app is best at **remote control**, `codex-pocket` wants to be best at:
+
+- triage
+- readability
+- multi-thread oversight
+- low-noise browser access
+- safer limited exposure
 
 ---
 
