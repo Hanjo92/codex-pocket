@@ -1257,10 +1257,13 @@
           scopeProjectsLabel: 'Allowed projects',
           scopeThreadsLabel: 'Allowed threads',
           scopeProjectsPlaceholder: 'Type a project label or path prefix',
-          scopeThreadsPlaceholder: 'Paste or pick a thread id',
+          scopeThreadsPlaceholder: 'Paste a thread id manually',
+          scopeThreadPresetPlaceholder: 'Pick a recent thread',
           scopeAdd: 'Add',
+          scopeAddSelected: 'Add selected',
           scopeEmptyProjects: 'No project restriction',
           scopeEmptyThreads: 'No thread restriction',
+          scopeManualThreadHint: 'Manual thread id fallback',
           scopeSummaryNone: 'Scope: full account visibility',
           scopeSummaryRestricted: 'Scope: projects [{projects}] · threads [{threads}]',
           preparingConnection: 'Preparing connection…',
@@ -1423,10 +1426,13 @@
           scopeProjectsLabel: '허용 프로젝트',
           scopeThreadsLabel: '허용 스레드',
           scopeProjectsPlaceholder: '프로젝트 라벨/경로 prefix 입력',
-          scopeThreadsPlaceholder: 'thread id 직접 입력 또는 선택',
+          scopeThreadsPlaceholder: 'thread id 직접 입력',
+          scopeThreadPresetPlaceholder: '최근 스레드 선택',
           scopeAdd: '추가',
+          scopeAddSelected: '선택 추가',
           scopeEmptyProjects: '프로젝트 제한 없음',
           scopeEmptyThreads: '스레드 제한 없음',
+          scopeManualThreadHint: '직접 thread id 넣기',
           scopeSummaryNone: '범위: 계정 전체 표시',
           scopeSummaryRestricted: '범위: projects [{projects}] · threads [{threads}]',
           preparingConnection: '연결 준비 중…',
@@ -1685,8 +1691,21 @@
 
       function getThreadScopeOptions() {
         return lastThreads
-          .map((thread) => ({ id: String(thread.id || '').trim(), label: `${thread.title || t('untitledThread')} · ${thread.projectLabel || t('noPath')}` }))
+          .map((thread) => ({
+            id: String(thread.id || '').trim(),
+            label: `${thread.title || t('untitledThread')} · ${thread.projectLabel || t('noPath')}`,
+            title: String(thread.title || '').trim() || t('untitledThread'),
+            projectLabel: String(thread.projectLabel || '').trim() || t('noPath'),
+          }))
           .filter((thread) => thread.id);
+      }
+
+      function getThreadScopeDisplay(value = '') {
+        const id = String(value || '').trim();
+        if (!id) return '';
+        const match = getThreadScopeOptions().find((thread) => thread.id === id);
+        if (!match) return id;
+        return `${match.title} · ${match.projectLabel}`;
       }
 
       function getScopeDraft(username = '', user = null) {
@@ -1700,13 +1719,13 @@
         return draft;
       }
 
-      function renderScopeChipList(items = [], emptyLabel = '', username = '', type = '', disabled = false) {
+      function renderScopeChipList(items = [], emptyLabel = '', username = '', type = '', disabled = false, formatter = null) {
         if (!items.length) {
           return `<div class="permission-scope-empty">${escapeHtml(emptyLabel)}</div>`;
         }
         return items.map((item) => `
           <span class="permission-scope-chip">
-            <span>${escapeHtml(item)}</span>
+            <span>${escapeHtml(typeof formatter === 'function' ? formatter(item) : item)}</span>
             <button type="button" data-scope-remove="${escapeHtml(username)}" data-scope-type="${escapeHtml(type)}" data-scope-value="${escapeHtml(item)}" ${disabled ? 'disabled' : ''}>×</button>
           </span>
         `).join('');
@@ -1760,9 +1779,17 @@
                 </div>
                 <div class="permission-scope-group">
                   <div class="permission-scope-label">${escapeHtml(t('scopeThreadsLabel'))}</div>
-                  <div class="permission-scope-chip-list">${renderScopeChipList(draft.threadIds, t('scopeEmptyThreads'), user.username, 'thread', busy || !manageable)}</div>
+                  <div class="permission-scope-chip-list">${renderScopeChipList(draft.threadIds, t('scopeEmptyThreads'), user.username, 'thread', busy || !manageable, getThreadScopeDisplay)}</div>
                   <div class="permission-scope-input-row">
-                    <input type="text" list="scope-thread-options" data-scope-add-input="${escapeHtml(user.username)}" data-scope-type="thread" placeholder="${escapeHtml(t('scopeThreadsPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
+                    <select data-scope-thread-select="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
+                      <option value="">${escapeHtml(t('scopeThreadPresetPlaceholder'))}</option>
+                      ${threadOptions.map((thread) => `<option value="${escapeHtml(thread.id)}">${escapeHtml(thread.label)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="secondary" data-scope-add-select="${escapeHtml(user.username)}" data-scope-type="thread" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAddSelected'))}</button>
+                  </div>
+                  <div class="permission-scope-label">${escapeHtml(t('scopeManualThreadHint'))}</div>
+                  <div class="permission-scope-input-row">
+                    <input type="text" data-scope-add-input="${escapeHtml(user.username)}" data-scope-type="thread" placeholder="${escapeHtml(t('scopeThreadsPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
                     <button type="button" class="secondary" data-scope-add="${escapeHtml(user.username)}" data-scope-type="thread" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAdd'))}</button>
                   </div>
                 </div>
@@ -1772,9 +1799,6 @@
         }).join('') + `
           <datalist id="scope-project-options">
             ${projectOptions.map((project) => `<option value="${escapeHtml(project)}"></option>`).join('')}
-          </datalist>
-          <datalist id="scope-thread-options">
-            ${threadOptions.map((thread) => `<option value="${escapeHtml(thread.id)}">${escapeHtml(thread.label)}</option>`).join('')}
           </datalist>
         `;
       }
@@ -3239,6 +3263,16 @@
           const input = permissionManagerListEl.querySelector(`[data-scope-add-input="${CSS.escape(username)}"][data-scope-type="${CSS.escape(type)}"]`);
           addScopeDraftValue(username, type, input ? input.value : '');
           if (input) input.value = '';
+          renderPermissionManager();
+          return;
+        }
+
+        const addSelectButton = event.target.closest('[data-scope-add-select]');
+        if (addSelectButton) {
+          const username = addSelectButton.dataset.scopeAddSelect || '';
+          const select = permissionManagerListEl.querySelector(`[data-scope-thread-select="${CSS.escape(username)}"]`);
+          addScopeDraftValue(username, 'thread', select ? select.value : '');
+          if (select) select.value = '';
           renderPermissionManager();
           return;
         }
