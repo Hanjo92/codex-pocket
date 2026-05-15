@@ -756,11 +756,18 @@
               <input id="threadSearch" type="search" placeholder="Search title, project, or source" autocomplete="off" />
             </div>
             <div>
+              <select id="threadViewMode" aria-label="Thread view mode">
+                <option value="all">All threads</option>
+                <option value="attention">Needs attention</option>
+              </select>
+            </div>
+            <div>
               <select id="threadSort" aria-label="Thread sort">
                 <option value="updated-desc">Most recently updated</option>
                 <option value="updated-asc">Least recently updated</option>
                 <option value="title-asc">Title</option>
                 <option value="cwd-asc">Project</option>
+                <option value="attention">Attention priority</option>
               </select>
             </div>
           </div>
@@ -858,6 +865,7 @@
       const threadListMetaEl = document.getElementById('threadListMeta');
       const threadSearchEl = document.getElementById('threadSearch');
       const threadSummaryEl = document.getElementById('threadSummary');
+      const threadViewModeEl = document.getElementById('threadViewMode');
       const threadSortEl = document.getElementById('threadSort');
       const projectSortEl = document.getElementById('projectSort');
       const projectFilterEl = document.getElementById('projectFilter');
@@ -901,11 +909,15 @@
           projectFilterAria: 'Project filter',
           projectSortAria: 'Project sort',
           threadSearchPlaceholder: 'Search title, project, or source',
+          threadViewModeAria: 'Thread view mode',
+          threadViewModeAll: 'All threads',
+          threadViewModeAttention: 'Needs attention',
           threadSortAria: 'Thread sort',
           threadSortUpdatedDesc: 'Most recently updated',
           threadSortUpdatedAsc: 'Least recently updated',
           threadSortTitleAsc: 'Title',
           threadSortProjectAsc: 'Project',
+          threadSortAttention: 'Attention priority',
           refreshList: 'Refresh list',
           loadingSession: 'Loading session…',
           refreshCurrentThread: 'Refresh current thread',
@@ -940,6 +952,8 @@
           stickyWaitingThread: 'Waiting for thread selection',
           stickyProjectActivity: 'new activity {count}',
           stickyMetaEmpty: 'Your project filter and current selected thread stay visible here.{activity}',
+          attentionCount: 'attention {count}',
+          attentionChip: 'Inbox: {count}',
           terminalReady: 'Terminal input ready',
           terminalReadyHint: 'Enter / Esc / Ctrl+C are currently wired to the live Codex terminal stdin.',
           terminalStdinHint: 'stdin hint: {preview}',
@@ -1017,11 +1031,15 @@
           projectFilterAria: '프로젝트 필터',
           projectSortAria: '프로젝트 정렬',
           threadSearchPlaceholder: '제목, 프로젝트, source 검색',
+          threadViewModeAria: '스레드 보기 방식',
+          threadViewModeAll: '전체 스레드',
+          threadViewModeAttention: 'attention 필요',
           threadSortAria: '스레드 정렬',
           threadSortUpdatedDesc: '최신 업데이트순',
           threadSortUpdatedAsc: '오래된 업데이트순',
           threadSortTitleAsc: '제목 가나다순',
           threadSortProjectAsc: '경로순',
+          threadSortAttention: 'attention 우선순위',
           refreshList: '목록 새로고침',
           loadingSession: '세션 불러오는 중…',
           refreshCurrentThread: '현재 스레드 새로고침',
@@ -1056,6 +1074,8 @@
           stickyWaitingThread: '스레드 선택 대기 중',
           stickyProjectActivity: '새 활동 {count}',
           stickyMetaEmpty: '프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.{activity}',
+          attentionCount: 'attention {count}',
+          attentionChip: '인박스 {count}',
           terminalReady: '터미널 입력 가능',
           terminalReadyHint: '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.',
           terminalStdinHint: 'stdin 힌트: {preview}',
@@ -1136,6 +1156,7 @@
       let authenticatedUsername = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
+      let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
       let projectSort = localStorage.getItem('codex-pocket:project-sort') || 'recent';
       let projectFilter = localStorage.getItem('codex-pocket:project-filter') || '';
@@ -1188,6 +1209,7 @@
           'updated-asc': t('threadSortUpdatedAsc'),
           'title-asc': t('threadSortTitleAsc'),
           'cwd-asc': t('threadSortProjectAsc'),
+          attention: t('threadSortAttention'),
         })[value] || t('threadSortUpdatedDesc');
       }
 
@@ -1220,11 +1242,15 @@
         projectSortEl.options[1].textContent = t('projectSortName');
         projectFilterEl.setAttribute('aria-label', t('projectFilterAria'));
         threadSearchEl.placeholder = t('threadSearchPlaceholder');
+        threadViewModeEl.setAttribute('aria-label', t('threadViewModeAria'));
+        threadViewModeEl.options[0].textContent = t('threadViewModeAll');
+        threadViewModeEl.options[1].textContent = t('threadViewModeAttention');
         threadSortEl.setAttribute('aria-label', t('threadSortAria'));
         threadSortEl.options[0].textContent = t('threadSortUpdatedDesc');
         threadSortEl.options[1].textContent = t('threadSortUpdatedAsc');
         threadSortEl.options[2].textContent = t('threadSortTitleAsc');
         threadSortEl.options[3].textContent = t('threadSortProjectAsc');
+        threadSortEl.options[4].textContent = t('threadSortAttention');
         refreshThreadsBtn.textContent = t('refreshList');
         refreshBtn.textContent = t('refreshCurrentThread');
         expandAllBtn.textContent = t('expandAll');
@@ -1386,17 +1412,42 @@
         return `<span class="state-badge ${escapeHtml(stateClass)}"${idAttr}>${escapeHtml(getStateLabel(state))}</span>`;
       }
 
+      function getAttentionPriority(thread = {}) {
+        switch (thread.state) {
+          case 'failed':
+            return 0;
+          case 'waiting_approval':
+            return 1;
+          case 'waiting_input':
+            return 2;
+          case 'running':
+            return 3;
+          case 'unknown':
+            return 4;
+          case 'completed':
+          default:
+            return 5;
+        }
+      }
+
+      function isAttentionThread(thread = {}) {
+        return ['failed', 'waiting_approval', 'waiting_input'].includes(thread.state);
+      }
+
       function getProjectStats(threads = []) {
         const map = new Map();
         for (const thread of threads) {
           const name = getProjectName(thread);
-          const current = map.get(name) || { name, count: 0, updatedAtMs: 0, unreadCount: 0 };
+          const current = map.get(name) || { name, count: 0, updatedAtMs: 0, unreadCount: 0, attentionCount: 0 };
           const updatedAtMs = thread.updatedAtMs || 0;
           current.count += 1;
           current.updatedAtMs = Math.max(current.updatedAtMs, updatedAtMs);
           const viewedAt = Number(projectViewedAt[name] || 0);
           if (updatedAtMs > viewedAt) {
             current.unreadCount += 1;
+          }
+          if (isAttentionThread(thread)) {
+            current.attentionCount += 1;
           }
           map.set(name, current);
         }
@@ -1424,6 +1475,11 @@
             return String(a.title || '').localeCompare(String(b.title || ''), getLocaleTag());
           case 'cwd-asc':
             return String(a.cwd || '').localeCompare(String(b.cwd || ''), getLocaleTag());
+          case 'attention': {
+            const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+            if (priorityDiff) return priorityDiff;
+            return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
+          }
           case 'updated-desc':
           default:
             return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
@@ -1435,10 +1491,21 @@
         const filteredByProject = projectFilter
           ? threads.filter((thread) => getProjectName(thread) === projectFilter)
           : [...threads];
+        const filteredByMode = threadViewMode === 'attention'
+          ? filteredByProject.filter((thread) => isAttentionThread(thread))
+          : filteredByProject;
         const filtered = !q
-          ? filteredByProject
-          : filteredByProject.filter((thread) => normalizedThreadSearch(thread).includes(q));
-        return filtered.sort(compareThreads);
+          ? filteredByMode
+          : filteredByMode.filter((thread) => normalizedThreadSearch(thread).includes(q));
+        const sorted = filtered.sort(compareThreads);
+        if (threadViewMode === 'attention' && threadSort !== 'attention') {
+          return sorted.sort((a, b) => {
+            const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+            if (priorityDiff) return priorityDiff;
+            return compareThreads(a, b);
+          });
+        }
+        return sorted;
       }
 
       function getThreadsSignature(threads = []) {
@@ -1632,6 +1699,14 @@
         return filteredThreads[0].id;
       }
 
+      function setThreadViewMode(value) {
+        threadViewMode = value === 'attention' ? 'attention' : 'all';
+        localStorage.setItem('codex-pocket:thread-view-mode', threadViewMode);
+        if (threadViewMode === 'attention' && threadSort === 'updated-desc') {
+          setThreadSort('attention');
+        }
+      }
+
       function setThreadSort(value) {
         threadSort = value || 'updated-desc';
         localStorage.setItem('codex-pocket:thread-sort', threadSort);
@@ -1652,12 +1727,13 @@
         const activeProject = activeThread ? getProjectName(activeThread) : (projectFilter || t('allProjects'));
         const projectStats = getProjectStats(lastThreads).find((item) => item.name === activeProject);
         const projectActivity = projectStats?.unreadCount ? ` · ${t('stickyProjectActivity', { count: projectStats.unreadCount })}` : '';
+        const attentionActivity = projectStats?.attentionCount ? ` · ${t('attentionCount', { count: projectStats.attentionCount })}` : '';
         stickyContextTitleEl.textContent = activeThread
           ? `${activeProject} · ${activeThread.title || t('untitledThread')}`
           : `${activeProject} · ${t('stickyWaitingThread')}`;
         stickyContextMetaEl.textContent = activeThread
-          ? `${activeThread.source || t('unknownSource')}${projectActivity}`
-          : t('stickyMetaEmpty', { activity: projectActivity });
+          ? `${activeThread.source || t('unknownSource')}${projectActivity}${attentionActivity}`
+          : t('stickyMetaEmpty', { activity: `${projectActivity}${attentionActivity}` });
         const state = activeThread?.state || 'unknown';
         stickyContextStateEl.textContent = getStateLabel(state);
         stickyContextStateEl.className = `state-badge ${getStateClass(state)}`;
@@ -1716,10 +1792,12 @@
 
       function renderThreadSummary(total, filtered) {
         const sortLabel = getThreadSortLabel(threadSort);
+        const attentionCount = lastThreads.filter((thread) => isAttentionThread(thread)).length;
         const items = [
           `<span class="chip">${escapeHtml(t('totalCount', { count: total }))}</span>`,
           `<span class="chip">${escapeHtml(t('shownCount', { count: filtered }))}</span>`,
           `<span class="chip">${escapeHtml(t('sortChip', { label: sortLabel }))}</span>`,
+          `<span class="chip">${escapeHtml(t('attentionChip', { count: attentionCount }))}</span>`,
         ];
         if (projectFilter) {
           items.push(`<span class="chip">${escapeHtml(t('projectChip', { project: projectFilter }))}</span>`);
@@ -2236,6 +2314,7 @@
 
       async function boot() {
         threadSearchEl.value = threadQuery;
+        threadViewModeEl.value = threadViewMode;
         threadSortEl.value = threadSort;
         projectSortEl.value = projectSort;
         transcriptDensityEl.value = transcriptDensity;
@@ -2254,6 +2333,18 @@
 
       threadSearchEl.addEventListener('input', async (event) => {
         setThreadQuery(event.target.value);
+        renderThreadList(lastThreads);
+        const filteredThreads = getFilteredThreads(lastThreads);
+        const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+        if (nextThreadId && nextThreadId !== selectedThreadId) {
+          setSelectedThread(nextThreadId);
+          renderThreadList(lastThreads);
+          await loadSession();
+        }
+      });
+
+      threadViewModeEl.addEventListener('change', async (event) => {
+        setThreadViewMode(event.target.value);
         renderThreadList(lastThreads);
         const filteredThreads = getFilteredThreads(lastThreads);
         const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
