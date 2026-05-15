@@ -23,13 +23,13 @@
 
 - read-side transcript rendering is still based on rollout/state parsing rather than a richer semantic thread model
 - terminal quick controls only work when Codex exposes a live terminal stdin target for the selected thread
-- auth/access now includes roles, modes, and optional visibility scope, but it is still intentionally lightweight rather than a hardened public-internet auth system
+- auth/access now includes roles, modes, visibility scope, and a much better manager UX, but it is still intentionally lightweight rather than a hardened public-internet auth system
 - the UI is mobile-friendly but still clearly prototype-grade
 
 ## Next implementation targets
 
 1. improve transcript modeling beyond rollout parsing
 2. make terminal-interaction state surface faster/more reliably in the UI
-3. refine scope UX and add narrower session-level restrictions where account scope is still too coarse
+3. add narrower session-level restrictions where account scope is still too coarse
 4. add thread pinning/favorites or stronger filtering if the list grows
 5. tighten security and deployment guidance for broader self-hosted use

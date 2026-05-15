@@ -75,12 +75,17 @@ Shipped foundation so far:
   - allowed thread ids
 - clearer UI indicators for allowed actions and restricted onboarding
 - server-side enforcement for thread/session reads plus input/control endpoints
+- browser-side scope management polish:
+  - chip-based scope editing
+  - human-readable thread selection
+  - real path-prefix project presets
+  - inline save feedback in the permission manager
 
 Remaining work in this area:
 
-- smoother scope-management UX for non-technical owners
 - narrower session-level affordances where full thread visibility is still too broad
 - stronger docs/hardening guidance for shared internal deployments
+- decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model
 
 Why it matters:
 
