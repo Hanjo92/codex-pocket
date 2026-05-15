@@ -1411,6 +1411,12 @@
           noPath: '(no project label)',
           allProjects: 'All projects',
           newBadge: 'new',
+          changedBadge: 'changed',
+          sinceLastViewTitle: 'Since last view',
+          sinceLastViewFallback: 'Nothing clearly changed since your last check.',
+          blockerFailedPrefix: 'Failed',
+          blockerApprovalPrefix: 'Approval needed',
+          blockerInputPrefix: 'Needs input',
           stickyWaitingThread: 'Waiting for thread selection',
           stickyProjectActivity: 'new activity {count}',
           stickyMetaEmpty: 'Your project filter and current selected thread stay visible here.{activity}',
@@ -1605,6 +1611,12 @@
           noPath: '(경로 없음)',
           allProjects: '전체 프로젝트',
           newBadge: 'new',
+          changedBadge: 'changed',
+          sinceLastViewTitle: '마지막으로 본 뒤 변경',
+          sinceLastViewFallback: '마지막으로 본 뒤 눈에 띄는 변경은 아직 없어.',
+          blockerFailedPrefix: '실패 원인',
+          blockerApprovalPrefix: '승인 필요',
+          blockerInputPrefix: '입력 필요',
           stickyWaitingThread: '스레드 선택 대기 중',
           stickyProjectActivity: '새 활동 {count}',
           stickyMetaEmpty: '프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.{activity}',
@@ -1736,6 +1748,13 @@
           return {};
         }
       })();
+      let threadSeenSnapshots = (() => {
+        try {
+          return JSON.parse(localStorage.getItem('codex-pocket:thread-seen-snapshots') || '{}');
+        } catch {
+          return {};
+        }
+      })();
       let projectThreadMemory = (() => {
         try {
           return JSON.parse(localStorage.getItem('codex-pocket:project-thread-memory') || '{}');
@@ -1752,6 +1771,7 @@
       const activeTurnIds = new Map();
       let lastQuickControls = { terminal: { available: false } };
       let selectedThreadAccess = { canSendInput: true, canInterrupt: true, canUseTerminalControl: true, actionRestricted: false };
+      let activeThreadChangeBaseline = null;
 
       function t(key, vars = {}) {
         const table = translations[currentLang] || translations.en;
@@ -2312,6 +2332,17 @@
         localStorage.setItem('codex-pocket:project-thread-memory', JSON.stringify(projectThreadMemory));
       }
 
+      function rememberThreadSnapshot(threadId, snapshot = null) {
+        if (!threadId || !snapshot) return;
+        threadSeenSnapshots[threadId] = snapshot;
+        localStorage.setItem('codex-pocket:thread-seen-snapshots', JSON.stringify(threadSeenSnapshots));
+      }
+
+      function getThreadSnapshot(threadId) {
+        if (!threadId) return null;
+        return threadSeenSnapshots[threadId] || null;
+      }
+
       function getRememberedProjectThread(projectName = projectFilter) {
         return projectName ? projectThreadMemory[projectName] || '' : '';
       }
@@ -2436,6 +2467,10 @@
         const updatedAtMs = Number(thread.updatedAtMs || 0);
         const viewedAt = Number(threadViewedAt[thread.id] || 0);
         return updatedAtMs > viewedAt;
+      }
+
+      function hasThreadBeenSeen(thread = {}) {
+        return Number(threadViewedAt[thread.id] || 0) > 0;
       }
 
       function normalizedThreadSearch(thread) {
@@ -2876,6 +2911,35 @@
         return flat.length > 220 ? `${flat.slice(0, 220)}…` : flat;
       }
 
+      function getLatestAssistantBlockFromText(text = '') {
+        const blocks = splitOutputBlocks(text);
+        return [...blocks].reverse().find((block) => block.classification.kind === 'assistant') || null;
+      }
+
+      function getStateReasonPrefix(state = '') {
+        switch (state) {
+          case 'failed':
+            return t('blockerFailedPrefix');
+          case 'waiting_approval':
+            return t('blockerApprovalPrefix');
+          case 'waiting_input':
+            return t('blockerInputPrefix');
+          default:
+            return '';
+        }
+      }
+
+      function getThreadReasonSummary(thread = {}) {
+        const rawSummary = String(thread.summary || '').trim() || t('noThreadSummary');
+        const prefix = getStateReasonPrefix(thread.state || '');
+        if (!prefix) return rawSummary;
+        const normalizedSummary = rawSummary.toLowerCase();
+        if (normalizedSummary.startsWith(prefix.toLowerCase())) {
+          return rawSummary;
+        }
+        return `${prefix}: ${rawSummary}`;
+      }
+
       function summarizeBlock(text = '') {
         const lines = String(text).split('\n').filter(Boolean);
         const header = lines[0] || t('item');
@@ -2995,10 +3059,12 @@
         }).filter(Boolean);
       }
 
-      function getAssistantChangeSummary(blocks = []) {
+      function getAssistantChangeSummary(blocks = [], baselineText = '') {
         const assistantBlocks = blocks.filter((block) => block.classification.kind === 'assistant');
         const current = assistantBlocks[assistantBlocks.length - 1] || null;
-        const previous = assistantBlocks[assistantBlocks.length - 2] || null;
+        const previous = baselineText
+          ? { body: baselineText }
+          : (assistantBlocks[assistantBlocks.length - 2] || null);
         if (!current) {
           return { latest: null, previous: null, changeLines: [] };
         }
@@ -3094,7 +3160,7 @@
         const assistantBlocks = group.blocks.filter((block) => block.classification.kind === 'assistant');
         const primaryUserBlock = userBlocks[userBlocks.length - 1] || null;
         const finalAssistantBlock = assistantBlocks[assistantBlocks.length - 1] || null;
-        const assistantChangeSummary = getAssistantChangeSummary(group.blocks);
+        const assistantChangeSummary = getAssistantChangeSummary(group.blocks, activeThreadChangeBaseline?.assistantBody || '');
         const latestNonUserBlock = [...group.blocks].reverse().find((block) => block.classification.kind !== 'user' && block.classification.kind !== 'developer') || null;
         const toolCount = group.blocks.filter((block) => block.classification.kind === 'tool').length;
         const noteCount = group.blocks.filter((block) => block.classification.kind === 'agent-note').length;
@@ -3222,11 +3288,13 @@
 
         const latestAssistant = [...blocks].reverse().find((block) => block.classification.kind === 'assistant');
         const latestUser = [...blocks].reverse().find((block) => block.classification.kind === 'user');
-        const latestAssistantIndex = latestAssistant ? blocks.lastIndexOf(latestAssistant) : -1;
-        const previousAssistant = latestAssistantIndex > 0
-          ? [...blocks.slice(0, latestAssistantIndex)].reverse().find((block) => block.classification.kind === 'assistant')
+        const baselineAssistantBody = activeThreadChangeBaseline?.assistantBody || '';
+        const fallbackPreviousAssistant = latestAssistant
+          ? [...blocks.slice(0, blocks.lastIndexOf(latestAssistant))].reverse().find((block) => block.classification.kind === 'assistant')
           : null;
-        const changeLines = latestAssistant ? getDistinctChangeLines(latestAssistant.body, previousAssistant?.body || '') : [];
+        const changeLines = latestAssistant
+          ? getDistinctChangeLines(latestAssistant.body, baselineAssistantBody || fallbackPreviousAssistant?.body || '')
+          : [];
         const toolCount = blocks.filter((block) => block.classification.kind === 'tool').length;
         const noteCount = blocks.filter((block) => block.classification.kind === 'agent-note').length;
         const changeCount = getChangeFocusedGroups(groups).length;
@@ -3239,15 +3307,17 @@
           : latestUser
             ? t('transcriptDigestWaiting', { text: summarizeText(latestUser.body, t('noInput')) })
             : t('transcriptDigestEmpty');
+        const changeHeading = baselineAssistantBody ? t('sinceLastViewTitle') : t('transcriptDigestChangedTitle');
+        const changeFallback = baselineAssistantBody ? t('sinceLastViewFallback') : t('transcriptDigestChangedFallback');
         transcriptDigestBodyEl.innerHTML = latestAssistant
           ? `
             <div><strong>${escapeHtml(primarySummary)}</strong></div>
-            <div>${escapeHtml(t('transcriptDigestChangedTitle'))}</div>
+            <div>${escapeHtml(changeHeading)}</div>
             ${changeLines.length ? `
               <ul class="transcript-digest-list">
                 ${changeLines.slice(0, 3).map((line) => `<li>${escapeHtml(summarizeText(line, ''))}</li>`).join('')}
               </ul>
-            ` : `<div>${escapeHtml(t('transcriptDigestChangedFallback'))}</div>`}
+            ` : `<div>${escapeHtml(changeFallback)}</div>`}
           `
           : `<div>${escapeHtml(primarySummary)}</div>`;
         transcriptDigestChipsEl.innerHTML = [
@@ -3293,19 +3363,21 @@
       function renderThreadItem(thread, index = 0) {
         const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
         const hasNew = isThreadNew(thread);
+        const hasSeen = hasThreadBeenSeen(thread);
         const fullTitle = thread.title || t('untitledThread');
         const fullPath = getProjectName(thread);
         const compactTitle = shortenMiddle(fullTitle, 56);
         const compactPath = shortenMiddle(fullPath, 44);
-        const summary = String(thread.summary || '').trim() || t('noThreadSummary');
+        const summary = getThreadReasonSummary(thread);
         const stateClass = `state-${getStateClass(thread.state || 'unknown')}`;
+        const changeBadge = hasNew ? (hasSeen ? t('changedBadge') : t('newBadge')) : '';
         return `
           <button class="thread-item ${stateClass} ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
             <div class="thread-item-head">
               <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
               <div class="thread-item-badges">
                 ${renderStateBadgeMarkup(thread.state || 'unknown')}
-                ${hasNew ? `<span class="thread-badge-new">${escapeHtml(t('newBadge'))}</span>` : ''}
+                ${changeBadge ? `<span class="thread-badge-new">${escapeHtml(changeBadge)}</span>` : ''}
               </div>
             </div>
             <div class="thread-item-summary">${escapeHtml(summary)}</div>
@@ -3465,6 +3537,11 @@
             setSelectedThread(thread.id);
           }
 
+          const previousSnapshot = thread.id ? getThreadSnapshot(thread.id) : null;
+          activeThreadChangeBaseline = previousSnapshot && Number(previousSnapshot.updatedAtMs || 0) < Number(thread.updatedAtMs || 0)
+            ? previousSnapshot
+            : null;
+
           let viewStateChanged = false;
           if (thread.id) {
             viewStateChanged = rememberProjectView(getProjectName(thread), thread.updatedAtMs || Date.now()) || viewStateChanged;
@@ -3492,6 +3569,15 @@
           });
           window.__lastOutputText = data.output || '';
           renderOutputBlocks(window.__lastOutputText);
+          const latestAssistantBlock = getLatestAssistantBlockFromText(window.__lastOutputText || '');
+          if (thread.id) {
+            rememberThreadSnapshot(thread.id, {
+              updatedAtMs: Number(thread.updatedAtMs || Date.now()),
+              assistantBody: latestAssistantBlock?.body || '',
+              state: thread.state || 'unknown',
+              summary: String(thread.summary || '').trim(),
+            });
+          }
           updateControlState();
         } catch (error) {
           statusEl.textContent = t('sessionLoadFailed');
@@ -3500,6 +3586,7 @@
           threadStateBadgeEl.textContent = getStateLabel('unknown');
           threadStateBadgeEl.className = `state-badge ${getStateClass('unknown')}`;
           lastActiveThread = null;
+          activeThreadChangeBaseline = null;
           selectedThreadAccess = { canSendInput: !!authCapabilities?.canSendInput, canInterrupt: !!authCapabilities?.canInterrupt, canUseTerminalControl: !!authCapabilities?.canUseTerminalControl, actionRestricted: false };
           renderStickyContext(null);
           outputEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
