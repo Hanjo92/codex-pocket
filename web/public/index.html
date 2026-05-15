@@ -1256,13 +1256,15 @@
           permissionManagerSaveFailed: 'Save failed: {message}',
           scopeProjectsLabel: 'Allowed projects',
           scopeThreadsLabel: 'Allowed threads',
-          scopeProjectsPlaceholder: 'Type a project label or path prefix',
+          scopeProjectsPlaceholder: 'Type a path prefix manually',
+          scopeProjectPresetPlaceholder: 'Pick a recent project path',
           scopeThreadsPlaceholder: 'Paste a thread id manually',
           scopeThreadPresetPlaceholder: 'Pick a recent thread',
           scopeAdd: 'Add',
           scopeAddSelected: 'Add selected',
           scopeEmptyProjects: 'No project restriction',
           scopeEmptyThreads: 'No thread restriction',
+          scopeManualProjectHint: 'Manual path-prefix fallback',
           scopeManualThreadHint: 'Manual thread id fallback',
           scopeSummaryNone: 'Scope: full account visibility',
           scopeSummaryRestricted: 'Scope: projects [{projects}] · threads [{threads}]',
@@ -1425,13 +1427,15 @@
           permissionManagerSaveFailed: '저장 실패: {message}',
           scopeProjectsLabel: '허용 프로젝트',
           scopeThreadsLabel: '허용 스레드',
-          scopeProjectsPlaceholder: '프로젝트 라벨/경로 prefix 입력',
+          scopeProjectsPlaceholder: '경로 prefix 직접 입력',
+          scopeProjectPresetPlaceholder: '최근 프로젝트 경로 선택',
           scopeThreadsPlaceholder: 'thread id 직접 입력',
           scopeThreadPresetPlaceholder: '최근 스레드 선택',
           scopeAdd: '추가',
           scopeAddSelected: '선택 추가',
           scopeEmptyProjects: '프로젝트 제한 없음',
           scopeEmptyThreads: '스레드 제한 없음',
+          scopeManualProjectHint: '직접 path prefix 넣기',
           scopeManualThreadHint: '직접 thread id 넣기',
           scopeSummaryNone: '범위: 계정 전체 표시',
           scopeSummaryRestricted: '범위: projects [{projects}] · threads [{threads}]',
@@ -1552,6 +1556,7 @@
       let authScope = { projectPrefixes: [], threadIds: [] };
       let permissionManagerUsers = [];
       let permissionManagerScopeDrafts = {};
+      let permissionManagerScopeOptions = { projects: [] };
       let permissionManagerBusyUser = '';
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
@@ -1686,7 +1691,19 @@
       }
 
       function getProjectScopeOptions() {
-        return [...new Set(lastThreads.map((thread) => String(thread.projectLabel || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+        const scoped = Array.isArray(permissionManagerScopeOptions?.projects) ? permissionManagerScopeOptions.projects : [];
+        if (scoped.length) return scoped;
+        return [...new Set(lastThreads.map((thread) => String(thread.projectLabel || '').trim()).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b))
+          .map((projectLabel) => ({ projectLabel, pathPrefix: projectLabel, threadCount: 0, latestUpdatedAtMs: 0 }));
+      }
+
+      function getProjectScopeDisplay(value = '') {
+        const pathPrefix = String(value || '').trim();
+        if (!pathPrefix) return '';
+        const match = getProjectScopeOptions().find((project) => String(project.pathPrefix || '').trim() === pathPrefix);
+        if (!match) return pathPrefix;
+        return `${match.projectLabel} · ${match.pathPrefix}`;
       }
 
       function getThreadScopeOptions() {
@@ -1771,7 +1788,15 @@
               <div class="permission-user-scope">
                 <div class="permission-scope-group">
                   <div class="permission-scope-label">${escapeHtml(t('scopeProjectsLabel'))}</div>
-                  <div class="permission-scope-chip-list">${renderScopeChipList(draft.projectPrefixes, t('scopeEmptyProjects'), user.username, 'project', busy || !manageable)}</div>
+                  <div class="permission-scope-chip-list">${renderScopeChipList(draft.projectPrefixes, t('scopeEmptyProjects'), user.username, 'project', busy || !manageable, getProjectScopeDisplay)}</div>
+                  <div class="permission-scope-input-row">
+                    <select data-scope-project-select="${escapeHtml(user.username)}" ${busy || !manageable ? 'disabled' : ''}>
+                      <option value="">${escapeHtml(t('scopeProjectPresetPlaceholder'))}</option>
+                      ${projectOptions.map((project) => `<option value="${escapeHtml(project.pathPrefix)}">${escapeHtml(project.projectLabel)} · ${escapeHtml(project.pathPrefix)}</option>`).join('')}
+                    </select>
+                    <button type="button" class="secondary" data-scope-add-select="${escapeHtml(user.username)}" data-scope-type="project" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAddSelected'))}</button>
+                  </div>
+                  <div class="permission-scope-label">${escapeHtml(t('scopeManualProjectHint'))}</div>
                   <div class="permission-scope-input-row">
                     <input type="text" list="scope-project-options" data-scope-add-input="${escapeHtml(user.username)}" data-scope-type="project" placeholder="${escapeHtml(t('scopeProjectsPlaceholder'))}" ${busy || !manageable ? 'disabled' : ''} />
                     <button type="button" class="secondary" data-scope-add="${escapeHtml(user.username)}" data-scope-type="project" ${busy || !manageable ? 'disabled' : ''}>${escapeHtml(t('scopeAdd'))}</button>
@@ -1798,7 +1823,7 @@
           `;
         }).join('') + `
           <datalist id="scope-project-options">
-            ${projectOptions.map((project) => `<option value="${escapeHtml(project)}"></option>`).join('')}
+            ${projectOptions.map((project) => `<option value="${escapeHtml(project.pathPrefix || project.projectLabel || '')}"></option>`).join('')}
           </datalist>
         `;
       }
@@ -1807,6 +1832,7 @@
         if (!authenticated || !authRequired || !authCapabilities?.canManageUsers) {
           permissionManagerUsers = [];
           permissionManagerScopeDrafts = {};
+          permissionManagerScopeOptions = { projects: [] };
           renderPermissionManager();
           return;
         }
@@ -1818,6 +1844,9 @@
             throw new Error(data.error || 'User list request failed');
           }
           permissionManagerUsers = Array.isArray(data.users) ? data.users : [];
+          permissionManagerScopeOptions = {
+            projects: Array.isArray(data.scopeOptions?.projects) ? data.scopeOptions.projects : [],
+          };
           permissionManagerScopeDrafts = Object.fromEntries(permissionManagerUsers.map((user) => [user.username, {
             projectPrefixes: Array.isArray(user.scope?.projectPrefixes) ? [...user.scope.projectPrefixes] : [],
             threadIds: Array.isArray(user.scope?.threadIds) ? [...user.scope.threadIds] : [],
@@ -3270,8 +3299,11 @@
         const addSelectButton = event.target.closest('[data-scope-add-select]');
         if (addSelectButton) {
           const username = addSelectButton.dataset.scopeAddSelect || '';
-          const select = permissionManagerListEl.querySelector(`[data-scope-thread-select="${CSS.escape(username)}"]`);
-          addScopeDraftValue(username, 'thread', select ? select.value : '');
+          const type = addSelectButton.dataset.scopeType || 'thread';
+          const select = permissionManagerListEl.querySelector(type === 'project'
+            ? `[data-scope-project-select="${CSS.escape(username)}"]`
+            : `[data-scope-thread-select="${CSS.escape(username)}"]`);
+          addScopeDraftValue(username, type, select ? select.value : '');
           if (select) select.value = '';
           renderPermissionManager();
           return;

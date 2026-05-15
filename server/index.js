@@ -929,6 +929,30 @@ function toPublicThread(thread = {}) {
   };
 }
 
+function buildScopeOptions(threads = []) {
+  const projectMap = new Map();
+  for (const thread of threads) {
+    const cwd = String(thread?.cwd || '').trim();
+    if (!cwd) continue;
+    const projectLabel = getProjectLabel(cwd);
+    const current = projectMap.get(cwd) || {
+      pathPrefix: cwd,
+      projectLabel,
+      threadCount: 0,
+      latestUpdatedAtMs: 0,
+    };
+    current.threadCount += 1;
+    current.latestUpdatedAtMs = Math.max(current.latestUpdatedAtMs, Number(thread?.updated_at_ms || 0));
+    projectMap.set(cwd, current);
+  }
+  return {
+    projects: [...projectMap.values()].sort((a, b) => {
+      if (b.latestUpdatedAtMs !== a.latestUpdatedAtMs) return b.latestUpdatedAtMs - a.latestUpdatedAtMs;
+      return a.projectLabel.localeCompare(b.projectLabel);
+    }),
+  };
+}
+
 async function tryReadRuntimeThread(threadId, includeTurns = false) {
   if (!threadId) return null;
   try {
@@ -1342,12 +1366,16 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/users' && req.method === 'GET') {
     try {
       if (!requireCapability(res, authState, 'canManageUsers')) return;
-      const users = await loadUsers();
+      const [users, threads] = await Promise.all([
+        loadUsers(),
+        listThreads(authState?.scope),
+      ]);
       sendJson(res, 200, {
         users: users.map((user) => ({
           ...sanitizeUser(user, users),
           manageable: canManageTargetUser(authState, user, users),
         })),
+        scopeOptions: buildScopeOptions(threads),
       });
     } catch (error) {
       sendJson(res, error.statusCode || 500, {
