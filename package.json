@@ -20,6 +20,11 @@
     "user:add": "node server/cli.js user add",
     "user:remove": "node server/cli.js user remove",
     "user:list": "node server/cli.js user list",
-    "user:set-password": "node server/cli.js user set-password"
+    "user:set-password": "node server/cli.js user set-password",
+    "user:set-mode": "node server/cli.js user set-mode",
+    "user:set-role": "node server/cli.js user set-role",
+    "user:set-projects": "node server/cli.js user set-projects",
+    "user:set-threads": "node server/cli.js user set-threads",
+    "user:clear-scope": "node server/cli.js user clear-scope"
   }
 }

@@ -60,15 +60,27 @@ A browser dashboard wins when it is easier to read than the raw host/client expe
 
 Theme: let users expose `codex-pocket` more safely on trusted networks.
 
-Planned work:
+Shipped foundation so far:
 
-- permission scopes such as:
+- permission modes:
   - read-only
-  - comment/input-only
+  - input-only
   - control-enabled
-- session or account-level capability restrictions
-- clearer UI indicators for allowed actions
-- groundwork for safer shared/internal usage
+- role boundaries:
+  - owner
+  - admin
+  - member
+- optional per-account visibility scope:
+  - allowed project prefixes
+  - allowed thread ids
+- clearer UI indicators for allowed actions and restricted onboarding
+- server-side enforcement for thread/session reads plus input/control endpoints
+
+Remaining work in this area:
+
+- smoother scope-management UX for non-technical owners
+- narrower session-level affordances where full thread visibility is still too broad
+- stronger docs/hardening guidance for shared internal deployments
 
 Why it matters:
 

@@ -61,7 +61,7 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 ### Local ops
 - 🔐 optional local-user browser login with HTTP-only cookie sessions
 - 🧰 local account/process CLI for repeatable setup and launch
-- 👤 local user-management CLI for browser sign-in accounts
+- 👤 local user-management CLI for browser sign-in accounts, roles, modes, and visibility scope
 
 ---
 
@@ -229,6 +229,35 @@ npm run user:add -- <username>
 npm run user:list
 npm run user:remove -- <username>
 npm run user:set-password -- <username>
+npm run user:set-mode -- <username> <read_only|input_only|control>
+npm run user:set-role -- <username> <member|admin|owner>
+npm run user:set-projects -- <username> </allowed/project,/another/project>
+npm run user:set-threads -- <username> <thread-id-1,thread-id-2>
+npm run user:clear-scope -- <username>
+```
+
+### Access model at a glance
+
+Browser access now has three layers:
+
+- **role**
+  - `owner` — full access, including role management
+  - `admin` — can manage member access modes/scopes
+  - `member` — no user management
+- **permission mode**
+  - `read_only` — triage/reading only
+  - `input_only` — can send follow-up input, but not broader control actions
+  - `control` — can use interrupt/terminal controls
+- **visibility scope**
+  - optional per-user `projectPrefixes` and `threadIds`
+  - when set, the server only exposes matching threads/sessions and blocks input/control on anything outside that scope
+
+Example: create a low-risk triage account that can only see one project:
+
+```bash
+npm run user:add -- reviewer
+npm run user:set-mode -- reviewer read_only
+npm run user:set-projects -- reviewer /Users/song/Projects/codex-pocket
 ```
 
 ### Diagnostics
@@ -308,8 +337,9 @@ For deeper notes:
 - keep the Codex app-server bound locally when possible
 - create at least one local browser login user before opening access beyond localhost
 - browser login users are created locally on the Codex host via CLI; they are not self-service from the web UI
+- use lower roles/modes and optional visibility scope for shared/internal viewers instead of handing out full control by default
 - browser-facing API payloads are intentionally reduced so normal thread/session reads do not expose host absolute paths like `cwd` or rollout file locations
-- anyone who can reach the web UI and satisfy auth may be able to inspect transcripts and send control/input actions, so treat network exposure carefully
+- anyone who can reach the web UI and satisfy auth may still inspect allowed transcripts and actions inside their granted scope, so treat network exposure carefully
 
 ---
 
