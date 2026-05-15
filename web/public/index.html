@@ -340,6 +340,10 @@
         font-size: 10px;
         font-weight: 800;
       }
+      .project-chip-attention.actionable {
+        cursor: pointer;
+        box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.18) inset;
+      }
       .project-chip.active .project-chip-activity,
       .project-chip.active .project-chip-attention {
         background: rgba(8, 17, 31, 0.16);
@@ -427,6 +431,18 @@
       .thread-item.active {
         border-color: var(--accent);
         box-shadow: inset 0 0 0 1px rgba(116, 192, 252, 0.25);
+      }
+      .thread-item.state-failed {
+        border-color: rgba(248, 113, 113, 0.28);
+        background: linear-gradient(180deg, rgba(248, 113, 113, 0.08), rgba(15, 22, 48, 1));
+      }
+      .thread-item.state-waiting-approval {
+        border-color: rgba(251, 146, 60, 0.24);
+        background: linear-gradient(180deg, rgba(251, 146, 60, 0.08), rgba(15, 22, 48, 1));
+      }
+      .thread-item.state-waiting-input {
+        border-color: rgba(250, 204, 21, 0.22);
+        background: linear-gradient(180deg, rgba(250, 204, 21, 0.06), rgba(15, 22, 48, 1));
       }
       .thread-item-title {
         font-size: 13px;
@@ -1033,6 +1049,7 @@
           noThreadSummary: 'No recent summary',
           attentionCollapse: 'Collapse',
           attentionExpand: 'Expand',
+          openProjectInbox: 'Open project inbox',
           terminalReady: 'Terminal input ready',
           terminalReadyHint: 'Enter / Esc / Ctrl+C are currently wired to the live Codex terminal stdin.',
           terminalStdinHint: 'stdin hint: {preview}',
@@ -1162,6 +1179,7 @@
           noThreadSummary: '최근 요약 없음',
           attentionCollapse: '접기',
           attentionExpand: '펼치기',
+          openProjectInbox: '프로젝트 인박스 열기',
           terminalReady: '터미널 입력 가능',
           terminalReadyHint: '지금 Enter / Esc / Ctrl+C 버튼이 실제 Codex 터미널 stdin으로 연결돼.',
           terminalStdinHint: 'stdin 힌트: {preview}',
@@ -1752,7 +1770,7 @@
             data-project-filter="${escapeHtml(chip.value)}"
           >
             <span>${escapeHtml(chip.label)}</span>
-            ${chip.attentionCount ? `<span class="project-chip-attention">${chip.attentionCount}</span>` : ''}
+            ${chip.attentionCount ? `<span class="project-chip-attention actionable" data-project-inbox="${escapeHtml(chip.value)}" title="${escapeHtml(t('openProjectInbox'))}">${chip.attentionCount}</span>` : ''}
             ${chip.unreadCount ? `<span class="project-chip-activity">${chip.unreadCount} ${escapeHtml(t('newBadge'))}</span>` : ''}
           </button>
         `).join('');
@@ -1762,6 +1780,28 @@
             const value = button.dataset.projectFilter || '';
             if (value === projectFilter) return;
             setProjectFilter(value);
+            renderThreadList(lastThreads);
+            const filteredThreads = getFilteredThreads(lastThreads);
+            const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+            if (nextThreadId && nextThreadId !== selectedThreadId) {
+              setSelectedThread(nextThreadId);
+              renderThreadList(lastThreads);
+              await loadSession();
+            }
+          });
+        }
+
+        for (const inboxBadge of projectFilterEl.querySelectorAll('[data-project-inbox]')) {
+          inboxBadge.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const value = inboxBadge.dataset.projectInbox || '';
+            setProjectFilter(value);
+            setThreadViewMode('attention');
+            if (threadSort !== 'attention') {
+              setThreadSort('attention');
+            }
+            if (threadViewModeEl) threadViewModeEl.value = 'attention';
+            if (threadSortEl) threadSortEl.value = threadSort;
             renderThreadList(lastThreads);
             const filteredThreads = getFilteredThreads(lastThreads);
             const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
@@ -2150,8 +2190,9 @@
         const compactTitle = shortenMiddle(fullTitle, 56);
         const compactPath = shortenMiddle(fullPath, 44);
         const summary = String(thread.summary || '').trim() || t('noThreadSummary');
+        const stateClass = `state-${getStateClass(thread.state || 'unknown')}`;
         return `
-          <button class="thread-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
+          <button class="thread-item ${stateClass} ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
             <div class="thread-item-head">
               <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
               <div class="thread-item-badges">
