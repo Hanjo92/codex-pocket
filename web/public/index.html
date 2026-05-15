@@ -784,6 +784,30 @@
         color: var(--muted);
         line-height: 1.5;
       }
+      .permission-manager-feedback {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        font-size: 12px;
+        line-height: 1.45;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+      }
+      .permission-manager-feedback[hidden] {
+        display: none;
+      }
+      .permission-manager-feedback.success {
+        border-color: rgba(74, 222, 128, 0.28);
+        background: rgba(74, 222, 128, 0.10);
+        color: #bbf7d0;
+      }
+      .permission-manager-feedback.error {
+        border-color: rgba(248, 113, 113, 0.28);
+        background: rgba(248, 113, 113, 0.10);
+        color: #fecaca;
+      }
       .output-list {
         display: flex;
         flex-direction: column;
@@ -1087,6 +1111,7 @@
             </summary>
             <div class="permission-manager-body">
               <div class="permission-manager-meta" id="permissionManagerMeta">Change browser access levels for saved users on this host.</div>
+              <div class="permission-manager-feedback" id="permissionManagerFeedback" hidden></div>
               <div class="permission-manager-list" id="permissionManagerList"></div>
             </div>
           </details>
@@ -1188,6 +1213,7 @@
       const permissionManagerTitleEl = document.getElementById('permissionManagerTitle');
       const permissionManagerSummaryMetaEl = document.getElementById('permissionManagerSummaryMeta');
       const permissionManagerMetaEl = document.getElementById('permissionManagerMeta');
+      const permissionManagerFeedbackEl = document.getElementById('permissionManagerFeedback');
       const permissionManagerListEl = document.getElementById('permissionManagerList');
       const authUsernameInputEl = document.getElementById('authUsernameInput');
       const authPasswordInputEl = document.getElementById('authPasswordInput');
@@ -1253,6 +1279,7 @@
           permissionManagerSave: 'Save',
           permissionManagerSaving: 'Saving…',
           permissionManagerSaved: 'Saved',
+          permissionManagerSavedDetail: 'Updated access for {username}.',
           permissionManagerSaveFailed: 'Save failed: {message}',
           scopeProjectsLabel: 'Allowed projects',
           scopeThreadsLabel: 'Allowed threads',
@@ -1424,6 +1451,7 @@
           permissionManagerSave: '저장',
           permissionManagerSaving: '저장 중…',
           permissionManagerSaved: '저장됨',
+          permissionManagerSavedDetail: '{username} 계정 접근 설정을 업데이트했어.',
           permissionManagerSaveFailed: '저장 실패: {message}',
           scopeProjectsLabel: '허용 프로젝트',
           scopeThreadsLabel: '허용 스레드',
@@ -1558,6 +1586,8 @@
       let permissionManagerScopeDrafts = {};
       let permissionManagerScopeOptions = { projects: [] };
       let permissionManagerBusyUser = '';
+      let permissionManagerFeedback = null;
+      let permissionManagerFeedbackTimer = null;
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
@@ -1748,6 +1778,35 @@
         `).join('');
       }
 
+      function renderPermissionManagerFeedback() {
+        if (!permissionManagerFeedbackEl) return;
+        if (!permissionManagerFeedback) {
+          permissionManagerFeedbackEl.hidden = true;
+          permissionManagerFeedbackEl.className = 'permission-manager-feedback';
+          permissionManagerFeedbackEl.textContent = '';
+          return;
+        }
+        permissionManagerFeedbackEl.hidden = false;
+        permissionManagerFeedbackEl.className = `permission-manager-feedback ${permissionManagerFeedback.kind}`;
+        permissionManagerFeedbackEl.textContent = permissionManagerFeedback.message || '';
+      }
+
+      function setPermissionManagerFeedback(kind = 'success', message = '', ttlMs = 2800) {
+        permissionManagerFeedback = message ? { kind, message } : null;
+        if (permissionManagerFeedbackTimer) {
+          clearTimeout(permissionManagerFeedbackTimer);
+          permissionManagerFeedbackTimer = null;
+        }
+        renderPermissionManagerFeedback();
+        if (permissionManagerFeedback && ttlMs > 0) {
+          permissionManagerFeedbackTimer = setTimeout(() => {
+            permissionManagerFeedback = null;
+            permissionManagerFeedbackTimer = null;
+            renderPermissionManagerFeedback();
+          }, ttlMs);
+        }
+      }
+
       function renderPermissionManager() {
         if (!permissionManagerEl) return;
         permissionManagerTitleEl.textContent = t('permissionManagerTitle');
@@ -1755,6 +1814,7 @@
         permissionManagerMetaEl.textContent = t('permissionManagerMeta');
         const visible = authenticated && authRequired && !!authCapabilities?.canManageUsers;
         permissionManagerEl.hidden = !visible;
+        renderPermissionManagerFeedback();
         if (!visible) return;
         if (!permissionManagerUsers.length) {
           permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(t('permissionManagerEmpty'))}</div>`;
@@ -1833,6 +1893,7 @@
           permissionManagerUsers = [];
           permissionManagerScopeDrafts = {};
           permissionManagerScopeOptions = { projects: [] };
+          setPermissionManagerFeedback('', '', 0);
           renderPermissionManager();
           return;
         }
@@ -1947,10 +2008,10 @@
             authScope = nextUser.scope || authScope;
             authCapabilities = buildCapabilities(authPermissionMode, authRole);
           }
-          inputStatusEl.textContent = t('permissionManagerSaved');
+          setPermissionManagerFeedback('success', t('permissionManagerSavedDetail', { username }));
           await loadPermissionManager();
         } catch (error) {
-          inputStatusEl.textContent = t('permissionManagerSaveFailed', { message: error.message });
+          setPermissionManagerFeedback('error', t('permissionManagerSaveFailed', { message: error.message }), 4800);
         } finally {
           permissionManagerBusyUser = '';
           renderPermissionManager();
