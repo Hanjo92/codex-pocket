@@ -621,6 +621,12 @@ function createNormalizedState(type, reason = '') {
   return { type, reason };
 }
 
+function summarizePreviewText(text = '', max = 140) {
+  const normalized = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return '';
+  return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
 function normalizeStateText(value = '') {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -726,21 +732,43 @@ function deriveThreadState({ blocks = [], terminalInteraction = null, runtimeThr
   return createNormalizedState('unknown', 'no reliable recent signal');
 }
 
+function deriveThreadSummary({ blocks = [], state = 'unknown' } = {}) {
+  const recentBlocks = [...blocks].reverse();
+  const latestAssistant = recentBlocks.find((block) => block?.role === 'assistant' && block.body);
+  const latestMeaningful = recentBlocks.find((block) => block?.body);
+  const sourceBlock = latestAssistant || latestMeaningful;
+  if (!sourceBlock?.body) return '';
+
+  let prefix = '';
+  if (state === 'failed') prefix = 'Failed: ';
+  else if (state === 'waiting_approval') prefix = 'Approval: ';
+  else if (state === 'waiting_input') prefix = 'Waiting: ';
+  else if (state === 'running') prefix = 'Running: ';
+
+  return summarizePreviewText(`${prefix}${sourceBlock.body}`);
+}
+
 async function enrichThreadState(thread = {}) {
   try {
     const transcript = await readThreadTranscript(thread.rollout_path);
     const terminalInteraction = getTerminalInteractionState(thread.id);
+    const state = deriveThreadState({
+      blocks: transcript.blocks,
+      terminalInteraction,
+    });
     return {
       ...thread,
-      state: deriveThreadState({
+      state,
+      summary: deriveThreadSummary({
         blocks: transcript.blocks,
-        terminalInteraction,
+        state: state.type,
       }),
     };
   } catch {
     return {
       ...thread,
       state: createNormalizedState('unknown', 'failed to read transcript'),
+      summary: '',
     };
   }
 }
@@ -766,6 +794,7 @@ function toPublicThread(thread = {}) {
     createdAtMs: thread.created_at_ms,
     threadSource: thread.thread_source || null,
     state: thread.state?.type || 'unknown',
+    summary: thread.summary || '',
   };
 }
 
