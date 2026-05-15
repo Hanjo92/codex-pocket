@@ -808,6 +808,39 @@
         background: rgba(248, 113, 113, 0.10);
         color: #fecaca;
       }
+      .transcript-digest {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 10px 0 12px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+      }
+      .transcript-digest[hidden] {
+        display: none;
+      }
+      .transcript-digest-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: flex-start;
+      }
+      .transcript-digest-title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .transcript-digest-body {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .transcript-digest-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
       .output-list {
         display: flex;
         flex-direction: column;
@@ -1081,6 +1114,11 @@
             <button id="refresh">Refresh current thread</button>
             <button id="expandAll" class="secondary">Expand all</button>
             <button id="collapseAll" class="secondary">Collapse all</button>
+            <select id="transcriptView" class="compact-select" aria-label="Transcript view mode">
+              <option value="full">Full transcript</option>
+              <option value="distilled">Distilled</option>
+              <option value="changes">Changes only</option>
+            </select>
             <select id="transcriptDensity" class="compact-select" aria-label="Intermediate detail visibility">
               <option value="hidden">Hide tools completely</option>
               <option value="notes-only">Show agent notes only</option>
@@ -1094,6 +1132,13 @@
             <button id="logoutBtn" class="secondary" type="button" style="display:none">Log out</button>
           </div>
           <div class="status muted" id="status">Preparing connection…</div>
+          <section class="transcript-digest" id="transcriptDigest" hidden>
+            <div class="transcript-digest-head">
+              <div class="transcript-digest-title" id="transcriptDigestTitle">Latest change</div>
+              <div class="thread-summary" id="transcriptDigestChips"></div>
+            </div>
+            <div class="transcript-digest-body" id="transcriptDigestBody">Waiting for transcript…</div>
+          </section>
           <section class="access-onboarding" id="accessOnboarding" hidden>
             <div class="access-onboarding-title" id="accessOnboardingTitle">Read-only access</div>
             <div class="access-onboarding-body" id="accessOnboardingBody">You can safely triage and read threads here, but sending input and controls are disabled for this account.</div>
@@ -1190,7 +1235,12 @@
       const escBtn = document.getElementById('escBtn');
       const ctrlCBtn = document.getElementById('ctrlCBtn');
       const interruptBtn = document.getElementById('interruptBtn');
+      const transcriptViewEl = document.getElementById('transcriptView');
       const transcriptDensityEl = document.getElementById('transcriptDensity');
+      const transcriptDigestEl = document.getElementById('transcriptDigest');
+      const transcriptDigestTitleEl = document.getElementById('transcriptDigestTitle');
+      const transcriptDigestBodyEl = document.getElementById('transcriptDigestBody');
+      const transcriptDigestChipsEl = document.getElementById('transcriptDigestChips');
       const logoutBtn = document.getElementById('logoutBtn');
       const langSelectEl = document.getElementById('langSelect');
       const authLangSelectEl = document.getElementById('authLangSelect');
@@ -1247,6 +1297,19 @@
           refreshCurrentThread: 'Refresh current thread',
           expandAll: 'Expand all',
           collapseAll: 'Collapse all',
+          transcriptDigestTitle: 'Latest change',
+          transcriptDigestEmpty: 'Waiting for transcript…',
+          transcriptDigestLatestReply: 'Latest reply: {text}',
+          transcriptDigestLatestRequest: 'Latest request: {text}',
+          transcriptDigestWaiting: 'No assistant reply yet. Latest request: {text}',
+          transcriptDigestChangesChip: 'Changes: {count}',
+          transcriptDigestTurnsChip: 'Turns: {count}',
+          transcriptDigestToolsChip: 'Tools: {count}',
+          transcriptDigestNotesChip: 'Notes: {count}',
+          transcriptViewAria: 'Transcript view mode',
+          transcriptViewFull: 'Full transcript',
+          transcriptViewDistilled: 'Distilled',
+          transcriptViewChanges: 'Changes only',
           transcriptDensityAria: 'Intermediate detail visibility',
           transcriptDensityHidden: 'Hide tools completely',
           transcriptDensityNotesOnly: 'Show agent notes only',
@@ -1426,6 +1489,19 @@
           refreshCurrentThread: '현재 스레드 새로고침',
           expandAll: '모두 펼치기',
           collapseAll: '모두 접기',
+          transcriptDigestTitle: '최근 변경',
+          transcriptDigestEmpty: '트랜스크립트를 기다리는 중…',
+          transcriptDigestLatestReply: '최근 답변: {text}',
+          transcriptDigestLatestRequest: '최근 요청: {text}',
+          transcriptDigestWaiting: '아직 assistant 답변이 없어. 최근 요청: {text}',
+          transcriptDigestChangesChip: '변경 {count}',
+          transcriptDigestTurnsChip: '턴 {count}',
+          transcriptDigestToolsChip: 'tool {count}',
+          transcriptDigestNotesChip: 'note {count}',
+          transcriptViewAria: '트랜스크립트 보기 방식',
+          transcriptViewFull: '전체 보기',
+          transcriptViewDistilled: '요약 보기',
+          transcriptViewChanges: '변경만 보기',
           transcriptDensityAria: '중간 과정 표시 방식',
           transcriptDensityHidden: 'tool 완전 숨김',
           transcriptDensityNotesOnly: 'agent note만 보기',
@@ -1608,6 +1684,7 @@
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
       let projectSort = localStorage.getItem('codex-pocket:project-sort') || 'recent';
       let projectFilter = localStorage.getItem('codex-pocket:project-filter') || '';
+      let transcriptViewMode = localStorage.getItem('codex-pocket:transcript-view') || 'full';
       let transcriptDensity = localStorage.getItem('codex-pocket:transcript-density') || 'hidden';
       let projectChipsCollapsed = localStorage.getItem('codex-pocket:project-chips-collapsed') !== 'false';
       let projectViewedAt = (() => {
@@ -1669,6 +1746,14 @@
         })[value] || t('threadSortUpdatedDesc');
       }
 
+      function getTranscriptViewLabel(value = transcriptViewMode) {
+        return ({
+          full: t('transcriptViewFull'),
+          distilled: t('transcriptViewDistilled'),
+          changes: t('transcriptViewChanges'),
+        })[value] || t('transcriptViewFull');
+      }
+
       function getTranscriptDensityLabel(value = transcriptDensity) {
         return ({
           hidden: t('transcriptDensityHidden'),
@@ -1679,6 +1764,7 @@
 
       function setOutputLockedMessage() {
         outputEl.innerHTML = `<div class="empty">${escapeHtml(t('loginToLoad'))}</div>`;
+        if (transcriptDigestEl) transcriptDigestEl.hidden = true;
       }
 
       function getPermissionLabel(mode = authPermissionMode) {
@@ -2090,6 +2176,10 @@
         refreshBtn.textContent = t('refreshCurrentThread');
         expandAllBtn.textContent = t('expandAll');
         collapseAllBtn.textContent = t('collapseAll');
+        transcriptViewEl.setAttribute('aria-label', t('transcriptViewAria'));
+        transcriptViewEl.options[0].textContent = t('transcriptViewFull');
+        transcriptViewEl.options[1].textContent = t('transcriptViewDistilled');
+        transcriptViewEl.options[2].textContent = t('transcriptViewChanges');
         transcriptDensityEl.setAttribute('aria-label', t('transcriptDensityAria'));
         transcriptDensityEl.options[0].textContent = t('transcriptDensityHidden');
         transcriptDensityEl.options[1].textContent = t('transcriptDensityNotesOnly');
@@ -2146,6 +2236,9 @@
         if (authRequired && !authenticated) {
           statusEl.textContent = t('loginRequired');
           setOutputLockedMessage();
+        }
+        if (window.__lastOutputText) {
+          renderTranscriptDigest(window.__lastOutputText || '');
         }
       }
 
@@ -2931,16 +3024,71 @@
         `;
       }
 
+      function getChangeFocusedGroups(groups = []) {
+        return groups.filter((group) => {
+          if (group.type === 'turn') {
+            return group.blocks.some((block) => ['assistant', 'tool', 'agent-note', 'other'].includes(block.classification.kind));
+          }
+          return group.block.classification.kind !== 'developer' && group.block.classification.kind !== 'user';
+        });
+      }
+
+      function getVisibleGroupsForMode(groups = []) {
+        if (transcriptViewMode === 'changes') {
+          return getChangeFocusedGroups(groups);
+        }
+        if (transcriptViewMode === 'distilled') {
+          return groups.filter((group) => group.type === 'turn' || (group.type === 'single' && !group.block.classification.lowSignal)).slice(-8);
+        }
+        return groups;
+      }
+
+      function renderTranscriptDigest(text = '') {
+        const blocks = splitOutputBlocks(text);
+        const groups = groupOutputBlocks(blocks);
+        if (!transcriptDigestEl) return;
+        if (!blocks.length) {
+          transcriptDigestEl.hidden = true;
+          transcriptDigestTitleEl.textContent = t('transcriptDigestTitle');
+          transcriptDigestBodyEl.textContent = t('transcriptDigestEmpty');
+          transcriptDigestChipsEl.innerHTML = '';
+          return;
+        }
+
+        const latestAssistant = [...blocks].reverse().find((block) => block.classification.kind === 'assistant');
+        const latestUser = [...blocks].reverse().find((block) => block.classification.kind === 'user');
+        const toolCount = blocks.filter((block) => block.classification.kind === 'tool').length;
+        const noteCount = blocks.filter((block) => block.classification.kind === 'agent-note').length;
+        const changeCount = getChangeFocusedGroups(groups).length;
+        const turnCount = groups.filter((group) => group.type === 'turn').length;
+
+        transcriptDigestEl.hidden = false;
+        transcriptDigestTitleEl.textContent = `${t('transcriptDigestTitle')} · ${getTranscriptViewLabel(transcriptViewMode)}`;
+        transcriptDigestBodyEl.textContent = latestAssistant
+          ? t('transcriptDigestLatestReply', { text: summarizeText(latestAssistant.body, t('noAnswer')) })
+          : latestUser
+            ? t('transcriptDigestWaiting', { text: summarizeText(latestUser.body, t('noInput')) })
+            : t('transcriptDigestEmpty');
+        transcriptDigestChipsEl.innerHTML = [
+          `<span class="chip">${escapeHtml(t('transcriptDigestChangesChip', { count: changeCount }))}</span>`,
+          `<span class="chip">${escapeHtml(t('transcriptDigestTurnsChip', { count: turnCount }))}</span>`,
+          toolCount ? `<span class="chip">${escapeHtml(t('transcriptDigestToolsChip', { count: toolCount }))}</span>` : '',
+          noteCount ? `<span class="chip">${escapeHtml(t('transcriptDigestNotesChip', { count: noteCount }))}</span>` : '',
+        ].filter(Boolean).join('');
+      }
+
       function renderOutputBlocks(text = '') {
         const blocks = splitOutputBlocks(text);
         const groups = groupOutputBlocks(blocks);
-        if (!groups.length) {
+        renderTranscriptDigest(text);
+        const visibleGroups = getVisibleGroupsForMode(groups);
+        if (!visibleGroups.length) {
           outputEl.innerHTML = `<div class="empty">${escapeHtml(t('noContent'))}</div>`;
           return;
         }
 
-        outputEl.innerHTML = groups.map((group, index) => {
-          const isOpen = shouldOpenGroup(group, index, groups.length);
+        outputEl.innerHTML = visibleGroups.map((group, index) => {
+          const isOpen = shouldOpenGroup(group, index, visibleGroups.length);
           return group.type === 'turn'
             ? renderTurnGroup(group, isOpen)
             : renderSingleBlock(group.block, isOpen);
@@ -3312,6 +3460,7 @@
         threadViewModeEl.value = threadViewMode;
         threadSortEl.value = threadSort;
         projectSortEl.value = projectSort;
+        transcriptViewEl.value = transcriptViewMode;
         transcriptDensityEl.value = transcriptDensity;
         renderStickyContext(null);
         const session = await refreshAuthSession();
@@ -3454,6 +3603,12 @@
         addScopeDraftValue(input.dataset.scopeAddInput || '', input.dataset.scopeType || 'project', input.value || '');
         input.value = '';
         renderPermissionManager();
+      });
+
+      transcriptViewEl.addEventListener('change', () => {
+        transcriptViewMode = transcriptViewEl.value || 'full';
+        localStorage.setItem('codex-pocket:transcript-view', transcriptViewMode);
+        renderOutputBlocks((window.__lastOutputText || ''));
       });
 
       transcriptDensityEl.addEventListener('change', () => {
