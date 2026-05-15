@@ -277,6 +277,8 @@ For deeper notes:
 - `docs/mvp-plan.md`
 - `docs/next-steps.md`
 - `docs/roadmap.md`
+- `docs/1.1.0-prd.md`
+- `docs/state-classification-design.md`
 
 ---
 
