@@ -97,7 +97,6 @@ A lighter browser surface becomes more useful when it can be safely shared witho
 
 Possible follow-ons:
 
-- pinned threads / favorites
 - notification digests for attention-needed threads
 - better multi-host support
 - richer timeline/activity views

@@ -412,6 +412,9 @@
         gap: 8px;
         padding: 0 8px 8px;
       }
+      .thread-item-shell {
+        position: relative;
+      }
       .thread-item {
         display: grid;
         width: 100%;
@@ -423,6 +426,7 @@
         border: 1px solid transparent;
         border-radius: 12px;
         padding: 12px;
+        padding-right: 44px;
         overflow: hidden;
         gap: 4px;
         align-content: start;
@@ -503,6 +507,33 @@
         color: #fde68a;
         font-size: 10px;
         font-weight: 800;
+      }
+      .thread-pin-toggle {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 26px;
+        height: 26px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        background: rgba(15, 23, 42, 0.72);
+        color: #94a3b8;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        line-height: 1;
+        padding: 0;
+        z-index: 2;
+      }
+      .thread-pin-toggle.active {
+        color: #facc15;
+        border-color: rgba(250, 204, 21, 0.45);
+        background: rgba(120, 53, 15, 0.3);
+      }
+      .thread-pin-toggle:hover {
+        color: #fde68a;
+        border-color: rgba(250, 204, 21, 0.55);
       }
       .thread-item-meta.path {
         overflow: hidden;
@@ -1136,6 +1167,7 @@
           </div>
           <div class="toolbar viewer-actions">
             <button id="refresh">Refresh current thread</button>
+            <button id="togglePinnedThread" class="secondary">Pin current thread</button>
             <button id="expandAll" class="secondary">Expand all</button>
             <button id="collapseAll" class="secondary">Collapse all</button>
             <select id="transcriptView" class="compact-select" aria-label="Transcript view mode">
@@ -1233,6 +1265,7 @@
       const refreshThreadsBtn = document.getElementById('refreshThreads');
       const expandAllBtn = document.getElementById('expandAll');
       const collapseAllBtn = document.getElementById('collapseAll');
+      const togglePinnedThreadBtn = document.getElementById('togglePinnedThread');
       const threadTitleEl = document.getElementById('threadTitle');
       const stickyContextStateEl = document.getElementById('stickyContextState');
       const threadStateBadgeEl = document.getElementById('threadStateBadge');
@@ -1319,6 +1352,13 @@
           refreshList: 'Refresh list',
           loadingSession: 'Loading session…',
           refreshCurrentThread: 'Refresh current thread',
+          pinCurrentThread: 'Pin current thread',
+          unpinCurrentThread: 'Unpin current thread',
+          pinThreadAction: 'Pin thread',
+          unpinThreadAction: 'Unpin thread',
+          pinnedSectionTitle: 'Pinned',
+          otherThreadsSectionTitle: 'Other threads',
+          pinnedChip: 'Pinned {count}',
           expandAll: 'Expand all',
           collapseAll: 'Collapse all',
           transcriptDigestTitle: 'Latest change',
@@ -1519,6 +1559,13 @@
           refreshList: '목록 새로고침',
           loadingSession: '세션 불러오는 중…',
           refreshCurrentThread: '현재 스레드 새로고침',
+          pinCurrentThread: '현재 스레드 고정',
+          unpinCurrentThread: '현재 스레드 고정 해제',
+          pinThreadAction: '스레드 고정',
+          unpinThreadAction: '스레드 고정 해제',
+          pinnedSectionTitle: '고정한 스레드',
+          otherThreadsSectionTitle: '다른 스레드',
+          pinnedChip: '고정 {count}',
           expandAll: '모두 펼치기',
           collapseAll: '모두 접기',
           transcriptDigestTitle: '최근 변경',
@@ -1763,6 +1810,14 @@
         }
       })();
       let lastThreads = [];
+      let pinnedThreadIds = (() => {
+        try {
+          const parsed = JSON.parse(localStorage.getItem('codex-pocket:pinned-threads') || '[]');
+          return Array.isArray(parsed) ? [...new Set(parsed.map((item) => String(item || '').trim()).filter(Boolean))] : [];
+        } catch {
+          return [];
+        }
+      })();
       let lastActiveThread = null;
       let lastSessionUpdatedAt = 0;
       let sendingInput = false;
@@ -1782,6 +1837,43 @@
 
       function getLocaleTag() {
         return currentLang === 'ko' ? 'ko-KR' : 'en-US';
+      }
+
+      function savePinnedThreadIds() {
+        localStorage.setItem('codex-pocket:pinned-threads', JSON.stringify(pinnedThreadIds));
+      }
+
+      function isThreadPinned(threadOrId) {
+        const threadId = typeof threadOrId === 'string' ? threadOrId : String(threadOrId?.id || '').trim();
+        return !!threadId && pinnedThreadIds.includes(threadId);
+      }
+
+      function setThreadPinned(threadId = '', pinned = true) {
+        const normalized = String(threadId || '').trim();
+        if (!normalized) return false;
+        const next = pinned
+          ? [...new Set([normalized, ...pinnedThreadIds])]
+          : pinnedThreadIds.filter((item) => item !== normalized);
+        if (next.join('|') === pinnedThreadIds.join('|')) return false;
+        pinnedThreadIds = next;
+        savePinnedThreadIds();
+        return true;
+      }
+
+      function toggleThreadPinned(threadId = '') {
+        const changed = setThreadPinned(threadId, !isThreadPinned(threadId));
+        if (!changed) return;
+        updatePinnedThreadButton();
+        renderThreadList(lastThreads);
+      }
+
+      function updatePinnedThreadButton() {
+        if (!togglePinnedThreadBtn) return;
+        const pinned = isThreadPinned(selectedThreadId || lastActiveThread?.id || '');
+        togglePinnedThreadBtn.textContent = pinned ? t('unpinCurrentThread') : t('pinCurrentThread');
+        togglePinnedThreadBtn.classList.toggle('active', pinned);
+        togglePinnedThreadBtn.disabled = !selectedThreadId && !lastActiveThread?.id;
+        togglePinnedThreadBtn.title = pinned ? t('unpinThreadAction') : t('pinThreadAction');
       }
 
       function getThreadSortLabel(value = threadSort) {
@@ -2222,6 +2314,7 @@
         threadSortEl.options[4].textContent = t('threadSortAttention');
         refreshThreadsBtn.textContent = t('refreshList');
         refreshBtn.textContent = t('refreshCurrentThread');
+        updatePinnedThreadButton();
         expandAllBtn.textContent = t('expandAll');
         collapseAllBtn.textContent = t('collapseAll');
         transcriptViewEl.setAttribute('aria-label', t('transcriptViewAria'));
@@ -2875,11 +2968,13 @@
       function renderThreadSummary(total, filtered) {
         const sortLabel = getThreadSortLabel(threadSort);
         const attentionCount = lastThreads.filter((thread) => isAttentionThread(thread)).length;
+        const pinnedCount = lastThreads.filter((thread) => isThreadPinned(thread)).length;
         const items = [
           `<span class="chip">${escapeHtml(t('totalCount', { count: total }))}</span>`,
           `<span class="chip">${escapeHtml(t('shownCount', { count: filtered }))}</span>`,
           `<span class="chip">${escapeHtml(t('sortChip', { label: sortLabel }))}</span>`,
           `<span class="chip">${escapeHtml(t('attentionChip', { count: attentionCount }))}</span>`,
+          `<span class="chip">${escapeHtml(t('pinnedChip', { count: pinnedCount }))}</span>`,
         ];
         if (projectFilter) {
           items.push(`<span class="chip">${escapeHtml(t('projectChip', { project: projectFilter }))}</span>`);
@@ -3371,20 +3466,24 @@
         const summary = getThreadReasonSummary(thread);
         const stateClass = `state-${getStateClass(thread.state || 'unknown')}`;
         const changeBadge = hasNew ? (hasSeen ? t('changedBadge') : t('newBadge')) : '';
+        const pinned = isThreadPinned(thread);
         return `
-          <button class="thread-item ${stateClass} ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
-            <div class="thread-item-head">
-              <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
-              <div class="thread-item-badges">
-                ${renderStateBadgeMarkup(thread.state || 'unknown')}
-                ${changeBadge ? `<span class="thread-badge-new">${escapeHtml(changeBadge)}</span>` : ''}
+          <div class="thread-item-shell">
+            <button class="thread-item ${stateClass} ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
+              <div class="thread-item-head">
+                <div class="thread-item-title" title="${escapeHtml(fullTitle)}">${escapeHtml(compactTitle)}</div>
+                <div class="thread-item-badges">
+                  ${renderStateBadgeMarkup(thread.state || 'unknown')}
+                  ${changeBadge ? `<span class="thread-badge-new">${escapeHtml(changeBadge)}</span>` : ''}
+                </div>
               </div>
-            </div>
-            <div class="thread-item-summary">${escapeHtml(summary)}</div>
-            <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
-            <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
-            <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
-          </button>
+              <div class="thread-item-summary">${escapeHtml(summary)}</div>
+              <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
+              <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
+              <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
+            </button>
+            <button class="thread-pin-toggle ${pinned ? 'active' : ''}" data-pin-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(pinned ? t('unpinThreadAction') : t('pinThreadAction'))}" aria-label="${escapeHtml(pinned ? t('unpinThreadAction') : t('pinThreadAction'))}">${pinned ? '★' : '☆'}</button>
+          </div>
         `;
       }
 
@@ -3425,6 +3524,41 @@
         }).join('');
       }
 
+      function renderPinnedThreadSections(threads = []) {
+        const pinned = threads.filter((thread) => isThreadPinned(thread));
+        const others = threads.filter((thread) => !isThreadPinned(thread));
+        const sections = [];
+        if (pinned.length) {
+          sections.push(`
+            <details class="thread-section" open>
+              <summary class="thread-section-head">
+                <div class="thread-section-title">${escapeHtml(t('pinnedSectionTitle'))}</div>
+                <div class="thread-section-count">${escapeHtml(String(pinned.length))}</div>
+                <div class="thread-section-toggle"></div>
+              </summary>
+              <div class="thread-section-body">
+                ${pinned.map((thread, index) => renderThreadItem(thread, index)).join('')}
+              </div>
+            </details>
+          `);
+        }
+        if (others.length) {
+          sections.push(`
+            <details class="thread-section" open>
+              <summary class="thread-section-head">
+                <div class="thread-section-title">${escapeHtml(t('otherThreadsSectionTitle'))}</div>
+                <div class="thread-section-count">${escapeHtml(String(others.length))}</div>
+                <div class="thread-section-toggle"></div>
+              </summary>
+              <div class="thread-section-body">
+                ${others.map((thread, index) => renderThreadItem(thread, index + pinned.length)).join('')}
+              </div>
+            </details>
+          `);
+        }
+        return sections.join('');
+      }
+
       function renderThreadList(threads = []) {
         lastThreads = threads;
         renderProjectFilter(threads);
@@ -3448,7 +3582,7 @@
 
         threadListEl.innerHTML = threadViewMode === 'attention'
           ? renderAttentionSections(filteredThreads)
-          : filteredThreads.map((thread, index) => renderThreadItem(thread, index)).join('');
+          : renderPinnedThreadSections(filteredThreads);
 
         for (const sectionEl of threadListEl.querySelectorAll('[data-attention-section]')) {
           const toggleEl = sectionEl.querySelector('.thread-section-toggle');
@@ -3464,8 +3598,17 @@
           button.addEventListener('click', () => {
             const threadId = button.dataset.threadId || '';
             setSelectedThread(threadId);
+            updatePinnedThreadButton();
             renderThreadList(lastThreads);
             loadSession();
+          });
+        }
+
+        for (const button of threadListEl.querySelectorAll('[data-pin-thread-id]')) {
+          button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleThreadPinned(button.dataset.pinThreadId || '');
           });
         }
       }
@@ -3553,6 +3696,7 @@
           }
           threadTitleEl.textContent = thread.title || t('untitledSession');
           threadMetaEl.textContent = `${thread.source || t('unknownSource')} · ${getProjectName(thread)}`;
+          updatePinnedThreadButton();
           const threadState = thread.state || 'unknown';
           threadStateBadgeEl.textContent = getStateLabel(threadState);
           threadStateBadgeEl.className = `state-badge ${getStateClass(threadState)}`;
@@ -3586,6 +3730,7 @@
           threadStateBadgeEl.textContent = getStateLabel('unknown');
           threadStateBadgeEl.className = `state-badge ${getStateClass('unknown')}`;
           lastActiveThread = null;
+          updatePinnedThreadButton();
           activeThreadChangeBaseline = null;
           selectedThreadAccess = { canSendInput: !!authCapabilities?.canSendInput, canInterrupt: !!authCapabilities?.canInterrupt, canUseTerminalControl: !!authCapabilities?.canUseTerminalControl, actionRestricted: false };
           renderStickyContext(null);
@@ -3932,6 +4077,11 @@
       });
 
       refreshBtn.addEventListener('click', loadSession);
+      togglePinnedThreadBtn.addEventListener('click', () => {
+        const threadId = selectedThreadId || lastActiveThread?.id || '';
+        if (!threadId) return;
+        toggleThreadPinned(threadId);
+      });
       expandAllBtn.addEventListener('click', () => {
         for (const details of outputEl.querySelectorAll('details.output-turn, details.output-block')) {
           details.open = true;

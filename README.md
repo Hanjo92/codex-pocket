@@ -40,6 +40,7 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 
 ### Read
 - 🧵 list recent Codex threads from local Codex state
+- 📌 pin favorite threads locally for fast return trips
 - 🔎 search / filter / sort by title, source, and project label
 - 📖 render transcripts in a mobile-friendly collapsible view
 - 🪶 expose a cleaner browser-facing thread/session model without leaking host absolute paths in normal API payloads
