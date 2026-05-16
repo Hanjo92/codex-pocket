@@ -75,6 +75,7 @@ Shipped foundation so far:
   - allowed thread ids
 - clearer UI indicators for allowed actions and restricted onboarding
 - server-side enforcement for thread/session reads plus input/control endpoints
+- owner/admin visibility into recent auth events and active browser sessions
 - browser-side scope management polish:
   - chip-based scope editing
   - human-readable thread selection
@@ -87,7 +88,7 @@ Shipped foundation so far:
 Remaining work in this area:
 
 - decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model
-- if broader sharing is needed later, add stronger auth/session/audit controls beyond the current internal-use baseline
+- if broader sharing is needed later, add stronger auth controls beyond the current internal-use baseline (for example revocation flows, persistent session storage, or stricter audit/export needs)
 
 Why it matters:
 

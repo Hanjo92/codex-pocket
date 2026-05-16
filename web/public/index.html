@@ -905,6 +905,54 @@
         display: grid;
         gap: 8px;
       }
+      .permission-manager-activity {
+        display: grid;
+        gap: 10px;
+      }
+      .permission-activity-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .permission-activity-card {
+        display: grid;
+        gap: 8px;
+        padding: 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.02);
+      }
+      .permission-activity-title {
+        font-size: 11px;
+        font-weight: 800;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .permission-activity-list {
+        display: grid;
+        gap: 8px;
+      }
+      .permission-activity-item {
+        display: grid;
+        gap: 3px;
+        font-size: 12px;
+      }
+      .permission-activity-line {
+        color: var(--text);
+        line-height: 1.45;
+        word-break: break-word;
+      }
+      .permission-activity-meta {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .permission-activity-empty {
+        color: var(--muted);
+        font-size: 11px;
+      }
       .permission-user-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr);
@@ -1241,6 +1289,10 @@
         }
       }
       @media (max-width: 640px) {
+        .permission-activity-grid,
+        .permission-user-scope {
+          grid-template-columns: 1fr;
+        }
         .wrap {
           padding-left: 10px;
           padding-right: 10px;
@@ -1448,6 +1500,7 @@
             <div class="permission-manager-body">
               <div class="permission-manager-meta" id="permissionManagerMeta">Change browser access levels for saved users on this host.</div>
               <div class="permission-manager-feedback" id="permissionManagerFeedback" hidden></div>
+              <div class="permission-manager-activity" id="permissionManagerActivity"></div>
               <div class="permission-manager-list" id="permissionManagerList"></div>
             </div>
           </details>
@@ -1570,6 +1623,7 @@
       const permissionManagerSummaryMetaEl = document.getElementById('permissionManagerSummaryMeta');
       const permissionManagerMetaEl = document.getElementById('permissionManagerMeta');
       const permissionManagerFeedbackEl = document.getElementById('permissionManagerFeedback');
+      const permissionManagerActivityEl = document.getElementById('permissionManagerActivity');
       const permissionManagerListEl = document.getElementById('permissionManagerList');
       const authUsernameInputEl = document.getElementById('authUsernameInput');
       const authPasswordInputEl = document.getElementById('authPasswordInput');
@@ -1676,6 +1730,22 @@
           permissionManagerMeta: 'Owners can change roles and modes. Admins can change member access modes only.',
           permissionManagerLoading: 'Loading users…',
           permissionManagerEmpty: 'No saved users.',
+          permissionActivitySessionsTitle: 'Active browser sessions',
+          permissionActivityEventsTitle: 'Recent auth activity',
+          permissionActivityEmptySessions: 'No active browser sessions yet.',
+          permissionActivityEmptyEvents: 'No auth events recorded yet.',
+          permissionActivityCurrentSession: 'Current session',
+          permissionActivityTtl: 'TTL {hours}h',
+          permissionActivitySessionLine: '{username} · last seen {time}',
+          permissionActivitySessionMeta: 'created {created} · expires {expires} · {ip}',
+          permissionActivityLoginSuccess: '{username} signed in',
+          permissionActivityLoginFailed: 'Failed sign-in for {username}',
+          permissionActivityLogout: '{username} signed out',
+          permissionActivitySessionInvalidated: 'Session invalidated for {username}',
+          permissionActivityPermissionUpdated: '{actor} changed {username} to {after}',
+          permissionActivityRoleUpdated: '{actor} changed {username} role to {after}',
+          permissionActivityScopeUpdated: '{actor} updated {username} scope',
+          permissionActivityUnknown: 'Unknown auth event',
           permissionManagerSave: 'Save',
           permissionManagerSaving: 'Saving…',
           permissionManagerSaved: 'Saved',
@@ -1913,6 +1983,22 @@
           permissionManagerMeta: 'owner는 role과 mode를 바꿀 수 있고, admin은 member의 access mode만 바꿀 수 있어.',
           permissionManagerLoading: '사용자 목록 불러오는 중…',
           permissionManagerEmpty: '저장된 사용자가 없어.',
+          permissionActivitySessionsTitle: '활성 브라우저 세션',
+          permissionActivityEventsTitle: '최근 인증 활동',
+          permissionActivityEmptySessions: '아직 활성 브라우저 세션이 없어.',
+          permissionActivityEmptyEvents: '아직 기록된 인증 이벤트가 없어.',
+          permissionActivityCurrentSession: '현재 세션',
+          permissionActivityTtl: 'TTL {hours}시간',
+          permissionActivitySessionLine: '{username} · 마지막 확인 {time}',
+          permissionActivitySessionMeta: '생성 {created} · 만료 {expires} · {ip}',
+          permissionActivityLoginSuccess: '{username} 계정이 로그인했어',
+          permissionActivityLoginFailed: '{username} 계정 로그인 실패',
+          permissionActivityLogout: '{username} 계정이 로그아웃했어',
+          permissionActivitySessionInvalidated: '{username} 세션이 무효화됐어',
+          permissionActivityPermissionUpdated: '{actor}가 {username} 권한을 {after}(으)로 바꿨어',
+          permissionActivityRoleUpdated: '{actor}가 {username} 역할을 {after}(으)로 바꿨어',
+          permissionActivityScopeUpdated: '{actor}가 {username} 범위를 바꿨어',
+          permissionActivityUnknown: '알 수 없는 인증 이벤트',
           permissionManagerSave: '저장',
           permissionManagerSaving: '저장 중…',
           permissionManagerSaved: '저장됨',
@@ -2071,6 +2157,7 @@
       let permissionManagerUsers = [];
       let permissionManagerScopeDrafts = {};
       let permissionManagerScopeOptions = { projects: [] };
+      let permissionManagerAuthActivity = { sessions: [], events: [], sessionTtlSeconds: 0 };
       let permissionManagerBusyUser = '';
       let permissionManagerFeedback = null;
       let permissionManagerFeedbackTimer = null;
@@ -2438,6 +2525,52 @@
         }
       }
 
+      function getAuthEventLabel(event = {}) {
+        const username = event.username || 'unknown';
+        const actor = event.actor || 'owner';
+        if (event.type === 'login_success') return t('permissionActivityLoginSuccess', { username });
+        if (event.type === 'login_failed') return t('permissionActivityLoginFailed', { username });
+        if (event.type === 'logout') return t('permissionActivityLogout', { username });
+        if (event.type === 'session_invalidated') return t('permissionActivitySessionInvalidated', { username });
+        if (event.type === 'user_permission_updated') return t('permissionActivityPermissionUpdated', { actor, username, after: getPermissionLabel(event.after || 'control') });
+        if (event.type === 'user_role_updated') return t('permissionActivityRoleUpdated', { actor, username, after: getRoleLabel(event.after || 'member') });
+        if (event.type === 'user_scope_updated') return t('permissionActivityScopeUpdated', { actor, username });
+        return t('permissionActivityUnknown');
+      }
+
+      function renderPermissionManagerActivity() {
+        if (!permissionManagerActivityEl) return;
+        const sessions = Array.isArray(permissionManagerAuthActivity?.sessions) ? permissionManagerAuthActivity.sessions : [];
+        const events = Array.isArray(permissionManagerAuthActivity?.events) ? permissionManagerAuthActivity.events : [];
+        const ttlHours = Math.max(1, Math.round((Number(permissionManagerAuthActivity?.sessionTtlSeconds || 0) || 0) / 3600));
+        permissionManagerActivityEl.innerHTML = `
+          <div class="permission-activity-grid">
+            <div class="permission-activity-card">
+              <div class="permission-activity-title">${escapeHtml(t('permissionActivitySessionsTitle'))} · ${escapeHtml(t('permissionActivityTtl', { hours: ttlHours }))}</div>
+              <div class="permission-activity-list">
+                ${sessions.length ? sessions.slice(0, 6).map((session) => `
+                  <div class="permission-activity-item">
+                    <div class="permission-activity-line">${escapeHtml(t('permissionActivitySessionLine', { username: session.username || 'unknown', time: formatDateTime(session.lastSeenAt) }))}${session.current ? ` · ${escapeHtml(t('permissionActivityCurrentSession'))}` : ''}</div>
+                    <div class="permission-activity-meta">${escapeHtml(t('permissionActivitySessionMeta', { created: formatDateTime(session.createdAt), expires: formatDateTime(session.expiresAt), ip: session.ip || 'unknown' }))}</div>
+                  </div>
+                `).join('') : `<div class="permission-activity-empty">${escapeHtml(t('permissionActivityEmptySessions'))}</div>`}
+              </div>
+            </div>
+            <div class="permission-activity-card">
+              <div class="permission-activity-title">${escapeHtml(t('permissionActivityEventsTitle'))}</div>
+              <div class="permission-activity-list">
+                ${events.length ? events.slice(0, 8).map((event) => `
+                  <div class="permission-activity-item">
+                    <div class="permission-activity-line">${escapeHtml(getAuthEventLabel(event))}</div>
+                    <div class="permission-activity-meta">${escapeHtml(formatDateTime(event.at))}${event.ip ? ` · ${escapeHtml(event.ip)}` : ''}</div>
+                  </div>
+                `).join('') : `<div class="permission-activity-empty">${escapeHtml(t('permissionActivityEmptyEvents'))}</div>`}
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
       function renderPermissionManager() {
         if (!permissionManagerEl) return;
         permissionManagerTitleEl.textContent = t('permissionManagerTitle');
@@ -2446,7 +2579,11 @@
         const visible = authenticated && authRequired && !!authCapabilities?.canManageUsers;
         permissionManagerEl.hidden = !visible;
         renderPermissionManagerFeedback();
-        if (!visible) return;
+        if (!visible) {
+          if (permissionManagerActivityEl) permissionManagerActivityEl.innerHTML = '';
+          return;
+        }
+        renderPermissionManagerActivity();
         if (!permissionManagerUsers.length) {
           permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(t('permissionManagerEmpty'))}</div>`;
           return;
@@ -2540,20 +2677,38 @@
           permissionManagerUsers = [];
           permissionManagerScopeDrafts = {};
           permissionManagerScopeOptions = { projects: [] };
+          permissionManagerAuthActivity = { sessions: [], events: [], sessionTtlSeconds: 0 };
           setPermissionManagerFeedback('', '', 0);
           renderPermissionManager();
           return;
         }
         permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(t('permissionManagerLoading'))}</div>`;
+        if (permissionManagerActivityEl) {
+          permissionManagerActivityEl.innerHTML = `<div class="permission-activity-empty">${escapeHtml(t('permissionManagerLoading'))}</div>`;
+        }
         try {
-          const response = await apiFetch('/api/users', { cache: 'no-store' });
-          const data = await response.json();
+          const [response, activityResponse] = await Promise.all([
+            apiFetch('/api/users', { cache: 'no-store' }),
+            apiFetch('/api/auth/activity', { cache: 'no-store' }),
+          ]);
+          const [data, activityData] = await Promise.all([
+            response.json(),
+            activityResponse.json(),
+          ]);
           if (!response.ok) {
             throw new Error(data.error || 'User list request failed');
+          }
+          if (!activityResponse.ok) {
+            throw new Error(activityData.error || 'Auth activity request failed');
           }
           permissionManagerUsers = Array.isArray(data.users) ? data.users : [];
           permissionManagerScopeOptions = {
             projects: Array.isArray(data.scopeOptions?.projects) ? data.scopeOptions.projects : [],
+          };
+          permissionManagerAuthActivity = {
+            sessions: Array.isArray(activityData.sessions) ? activityData.sessions : [],
+            events: Array.isArray(activityData.events) ? activityData.events : [],
+            sessionTtlSeconds: Number(activityData.sessionTtlSeconds || 0) || 0,
           };
           permissionManagerScopeDrafts = Object.fromEntries(permissionManagerUsers.map((user) => [user.username, {
             projectPrefixes: Array.isArray(user.scope?.projectPrefixes) ? [...user.scope.projectPrefixes] : [],
@@ -2563,6 +2718,9 @@
           renderPermissionManager();
         } catch (error) {
           permissionManagerListEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+          if (permissionManagerActivityEl) {
+            permissionManagerActivityEl.innerHTML = `<div class="permission-activity-empty">${escapeHtml(error.message)}</div>`;
+          }
         }
       }
 

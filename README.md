@@ -68,8 +68,9 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 
 ### Local ops
 - 🔐 optional local-user browser login with HTTP-only cookie sessions
+- 📒 lightweight auth audit trail plus active browser-session visibility for owners/admins
 - 🧰 local account/process CLI for repeatable setup and launch
-- 👤 local user-management CLI for browser sign-in accounts, roles, modes, and visibility scope
+- 👤 local user-management CLI for browser sign-in accounts, roles, modes, visibility scope, and delegated review boundaries
 
 ---
 

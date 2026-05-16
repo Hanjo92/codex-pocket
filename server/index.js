@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { timingSafeEqual, randomBytes, scryptSync } from 'node:crypto';
-import { readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +11,7 @@ const publicDir = path.resolve(__dirname, '../web/public');
 const runDir = path.resolve(__dirname, '../run');
 const usersPath = path.join(runDir, 'users.json');
 const accountsPath = path.join(runDir, 'accounts.json');
+const authAuditLogPath = path.join(runDir, 'auth-audit.jsonl');
 const port = Number(process.env.PORT || 4782);
 const host = process.env.HOST || process.env.CODEX_POCKET_HOST || '127.0.0.1';
 const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '', '.codex');
@@ -22,6 +23,7 @@ const appServerUrl = process.env.CODEX_POCKET_APP_SERVER_URL || appServerListen;
 const inputMaxBytes = Number(process.env.CODEX_POCKET_INPUT_MAX_BYTES || 16 * 1024);
 const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS || 1500);
 const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS || 60 * 60 * 24 * 30);
+const authAuditMaxEntries = Number(process.env.CODEX_POCKET_AUTH_AUDIT_MAX_ENTRIES || 80);
 const sessionCookieName = 'codex-pocket-session';
 const DEFAULT_PERMISSION_MODE = 'control';
 const DEFAULT_USER_ROLE = 'member';
@@ -73,6 +75,15 @@ function serializeCookie(name, value, options = {}) {
 
 function shouldUseSecureCookies(req) {
   return forceSecureCookies || req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted;
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return forwarded || String(req.socket?.remoteAddress || '').trim() || 'unknown';
+}
+
+function getUserAgent(req) {
+  return String(req.headers['user-agent'] || '').trim().slice(0, 240);
 }
 
 function getRequestOrigin(req) {
@@ -283,11 +294,72 @@ function verifyPassword(password, user) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function createSession(username) {
+async function recordAuthAudit(eventType, details = {}) {
+  try {
+    const event = {
+      id: randomBytes(8).toString('hex'),
+      at: Date.now(),
+      type: String(eventType || '').trim() || 'unknown',
+      ...details,
+    };
+    await appendFile(authAuditLogPath, `${JSON.stringify(event)}\n`, 'utf8');
+  } catch (error) {
+    console.error('[codex-pocket] failed to append auth audit event:', error.message);
+  }
+}
+
+async function readAuthAuditLog(limit = authAuditMaxEntries) {
+  try {
+    const raw = await readFile(authAuditLogPath, 'utf8');
+    return raw
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(-Math.max(1, limit))
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+function toPublicSession(sessionId, session = {}, currentSessionId = '') {
+  return {
+    sessionId,
+    current: !!currentSessionId && sessionId === currentSessionId,
+    username: session.username || '',
+    createdAt: session.createdAt || null,
+    lastSeenAt: session.lastSeenAt || null,
+    expiresAt: session.expiresAt || null,
+    ip: session.lastSeenIp || '',
+    userAgent: session.userAgent || '',
+  };
+}
+
+function listPublicSessions(currentSessionId = '') {
+  return [...authSessions.entries()]
+    .map(([sessionId, session]) => toPublicSession(sessionId, session, currentSessionId))
+    .sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0));
+}
+
+function createSession(username, req) {
+  const now = Date.now();
   const sessionId = randomBytes(24).toString('hex');
   authSessions.set(sessionId, {
     username,
-    expiresAt: Date.now() + (sessionTtlSeconds * 1000),
+    createdAt: now,
+    lastSeenAt: now,
+    lastSeenIp: getClientIp(req),
+    userAgent: getUserAgent(req),
+    expiresAt: now + (sessionTtlSeconds * 1000),
   });
   return sessionId;
 }
@@ -302,6 +374,9 @@ function getSession(req) {
     authSessions.delete(sessionId);
     return null;
   }
+  session.lastSeenAt = Date.now();
+  session.lastSeenIp = getClientIp(req);
+  if (!session.userAgent) session.userAgent = getUserAgent(req);
   session.expiresAt = Date.now() + (sessionTtlSeconds * 1000);
   return { sessionId, ...session };
 }
@@ -320,6 +395,11 @@ async function getAuthState(req) {
   const user = findUserByUsername(users, session.username);
   if (!user) {
     authSessions.delete(session.sessionId);
+    await recordAuthAudit('session_invalidated', {
+      username: session.username,
+      sessionId: session.sessionId,
+      reason: 'user_missing',
+    });
     return { authRequired: true, authenticated: false, username: null, sessionId: null, permissionMode: null, role: null, capabilities: null };
   }
   const role = getUserRole(user, users);
@@ -1355,6 +1435,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/auth/session') {
     const state = await getAuthState(req);
+    const session = getSession(req);
     sendJson(res, 200, {
       authenticated: state.authenticated,
       authRequired: state.authRequired,
@@ -1363,6 +1444,8 @@ const server = http.createServer(async (req, res) => {
       role: state.role,
       scope: state.scope || { projectPrefixes: [], threadIds: [], actionThreadIds: [] },
       capabilities: state.capabilities,
+      session: session ? toPublicSession(session.sessionId, session, session.sessionId) : null,
+      sessionTtlSeconds,
     });
     return;
   }
@@ -1379,6 +1462,11 @@ const server = http.createServer(async (req, res) => {
       const password = String(body.password || '');
       const user = findUserByUsername(users, username);
       if (!user || !password || !verifyPassword(password, user)) {
+        await recordAuthAudit('login_failed', {
+          username,
+          ip: getClientIp(req),
+          userAgent: getUserAgent(req),
+        });
         sendJson(res, 401, {
           error: 'Invalid username or password',
           authRequired: true,
@@ -1386,9 +1474,17 @@ const server = http.createServer(async (req, res) => {
         });
         return;
       }
-      const sessionId = createSession(username);
+      const sessionId = createSession(username, req);
       const role = getUserRole(user, users);
       const capabilities = getPermissionCapabilities(user.permissionMode, role);
+      await recordAuthAudit('login_success', {
+        username,
+        sessionId,
+        ip: getClientIp(req),
+        userAgent: getUserAgent(req),
+        permissionMode: capabilities.mode,
+        role,
+      });
       sendJson(res, 200, {
         ok: true,
         authenticated: true,
@@ -1398,6 +1494,7 @@ const server = http.createServer(async (req, res) => {
         role,
         scope: getUserScope(user),
         capabilities,
+        session: toPublicSession(sessionId, authSessions.get(sessionId), sessionId),
       }, {
         'set-cookie': serializeCookie(sessionCookieName, sessionId, {
           httpOnly: true,
@@ -1419,6 +1516,12 @@ const server = http.createServer(async (req, res) => {
     const session = getSession(req);
     if (session?.sessionId) {
       authSessions.delete(session.sessionId);
+      await recordAuthAudit('logout', {
+        username: session.username,
+        sessionId: session.sessionId,
+        ip: getClientIp(req),
+        userAgent: getUserAgent(req),
+      });
     }
     sendJson(res, 200, { ok: true }, {
       'set-cookie': serializeCookie(sessionCookieName, '', {
@@ -1526,6 +1629,26 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/auth/activity' && req.method === 'GET') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      const [events] = await Promise.all([
+        readAuthAuditLog(),
+      ]);
+      sendJson(res, 200, {
+        sessions: listPublicSessions(authState?.sessionId || ''),
+        events,
+        sessionTtlSeconds,
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
   if (url.pathname === '/api/users/mode' && req.method === 'POST') {
     try {
       if (!requireCapability(res, authState, 'canManageUsers')) return;
@@ -1543,9 +1666,16 @@ const server = http.createServer(async (req, res) => {
       if (!canManageTargetUser(authState, user, users)) {
         throw createError(`You cannot manage ${username}`, 403);
       }
+      const previousPermissionMode = normalizePermissionMode(user.permissionMode);
       user.permissionMode = permissionMode;
       user.updatedAtMs = Date.now();
       await saveUsers(users);
+      await recordAuthAudit('user_permission_updated', {
+        actor: authState?.username || 'owner',
+        username,
+        before: previousPermissionMode,
+        after: permissionMode,
+      });
       sendJson(res, 200, {
         ok: true,
         user: sanitizeUser(user, users),
@@ -1575,6 +1705,7 @@ const server = http.createServer(async (req, res) => {
       if (!canManageTargetUser(authState, user, users)) {
         throw createError(`You cannot manage ${username}`, 403);
       }
+      const previousScope = getUserScope(user);
       user.scope = {
         projectPrefixes: normalizeScopeList(body.projectPrefixes),
         threadIds: normalizeScopeList(body.threadIds),
@@ -1582,6 +1713,12 @@ const server = http.createServer(async (req, res) => {
       };
       user.updatedAtMs = Date.now();
       await saveUsers(users);
+      await recordAuthAudit('user_scope_updated', {
+        actor: authState?.username || 'owner',
+        username,
+        before: previousScope,
+        after: getUserScope(user),
+      });
       sendJson(res, 200, {
         ok: true,
         user: sanitizeUser(user, users),
@@ -1619,6 +1756,12 @@ const server = http.createServer(async (req, res) => {
       user.role = role;
       user.updatedAtMs = Date.now();
       await saveUsers(users);
+      await recordAuthAudit('user_role_updated', {
+        actor: authState?.username || 'owner',
+        username,
+        before: currentRole,
+        after: role,
+      });
       sendJson(res, 200, {
         ok: true,
         user: sanitizeUser(user, users),
