@@ -476,6 +476,47 @@
       .thread-item-shell {
         position: relative;
       }
+      .activity-timeline {
+        display: grid;
+        gap: 8px;
+      }
+      .activity-item {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        text-align: left;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(15, 23, 42, 0.72);
+        color: var(--text);
+        border-radius: 14px;
+        padding: 10px 12px;
+        display: grid;
+        gap: 6px;
+      }
+      .activity-item.active {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px rgba(116, 192, 252, 0.25);
+      }
+      .activity-item-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .activity-item-title {
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.4;
+      }
+      .activity-item-summary {
+        font-size: 12px;
+        line-height: 1.45;
+        color: #dbe7ff;
+      }
+      .activity-item-meta {
+        font-size: 11px;
+        color: var(--muted);
+      }
       .thread-item {
         display: grid;
         width: 100%;
@@ -1198,6 +1239,7 @@
               <select id="threadViewMode" aria-label="Thread view mode">
                 <option value="all">All threads</option>
                 <option value="attention">Needs attention</option>
+                <option value="activity">Recent activity</option>
               </select>
             </div>
             <div>
@@ -1425,6 +1467,7 @@
           threadViewModeAria: 'Thread view mode',
           threadViewModeAll: 'All threads',
           threadViewModeAttention: 'Needs attention',
+          threadViewModeActivity: 'Recent activity',
           threadSortAria: 'Thread sort',
           threadSortUpdatedDesc: 'Most recently updated',
           threadSortUpdatedAsc: 'Least recently updated',
@@ -1637,6 +1680,7 @@
           threadViewModeAria: '스레드 보기 방식',
           threadViewModeAll: '전체 스레드',
           threadViewModeAttention: 'attention 필요',
+          threadViewModeActivity: '최근 activity',
           threadSortAria: '스레드 정렬',
           threadSortUpdatedDesc: '최신 업데이트순',
           threadSortUpdatedAsc: '오래된 업데이트순',
@@ -2399,6 +2443,7 @@
         threadViewModeEl.setAttribute('aria-label', t('threadViewModeAria'));
         threadViewModeEl.options[0].textContent = t('threadViewModeAll');
         threadViewModeEl.options[1].textContent = t('threadViewModeAttention');
+        threadViewModeEl.options[2].textContent = t('threadViewModeActivity');
         threadSortEl.setAttribute('aria-label', t('threadSortAria'));
         threadSortEl.options[0].textContent = t('threadSortUpdatedDesc');
         threadSortEl.options[1].textContent = t('threadSortUpdatedAsc');
@@ -2941,7 +2986,7 @@
       }
 
       function setThreadViewMode(value) {
-        threadViewMode = value === 'attention' ? 'attention' : 'all';
+        threadViewMode = ['attention', 'activity'].includes(value) ? value : 'all';
         localStorage.setItem('codex-pocket:thread-view-mode', threadViewMode);
         if (threadViewMode === 'attention' && threadSort === 'updated-desc') {
           setThreadSort('attention');
@@ -3723,6 +3768,23 @@
         return sections.join('');
       }
 
+      function renderActivityTimeline(threads = []) {
+        return `<div class="activity-timeline">${threads.map((thread, index) => {
+          const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
+          const summary = getThreadReasonSummary(thread);
+          return `
+            <button class="activity-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}">
+              <div class="activity-item-head">
+                <div class="activity-item-title">${escapeHtml(thread.title || t('untitledThread'))}</div>
+                ${renderStateBadgeMarkup(thread.state || 'unknown')}
+              </div>
+              <div class="activity-item-summary">${escapeHtml(summary)}</div>
+              <div class="activity-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))} · ${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
+            </button>
+          `;
+        }).join('')}</div>`;
+      }
+
       function renderThreadList(threads = []) {
         lastThreads = threads;
         renderProjectFilter(threads);
@@ -3747,7 +3809,9 @@
 
         threadListEl.innerHTML = threadViewMode === 'attention'
           ? renderAttentionSections(filteredThreads)
-          : renderPinnedThreadSections(filteredThreads);
+          : threadViewMode === 'activity'
+            ? renderActivityTimeline(filteredThreads)
+            : renderPinnedThreadSections(filteredThreads);
 
         for (const sectionEl of threadListEl.querySelectorAll('[data-attention-section]')) {
           const toggleEl = sectionEl.querySelector('.thread-section-toggle');

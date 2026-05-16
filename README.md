@@ -58,6 +58,7 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 - 🌐 built-in Korean / English UI toggle
 - 🧠 browser-language detection + saved preference
 - 🚨 attention digest for urgent thread triage
+- 🕒 recent activity view for cross-thread scanning
 - 📌 project-first navigation and sticky current-context view
 
 ### Local ops
