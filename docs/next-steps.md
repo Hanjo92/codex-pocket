@@ -29,5 +29,4 @@
 ## Next implementation targets
 
 1. go beyond the new internal-sharing hardening baseline with stronger auth/session/audit controls if broader self-hosted exposure is needed
-2. polish delegated read-only/restricted review flows with stronger context cues where needed
-3. deepen transcript modeling or host-level orchestration if broader oversight is needed
+2. deepen transcript modeling or host-level orchestration if broader oversight is needed

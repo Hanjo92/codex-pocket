@@ -46,6 +46,7 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 - 🧠 semantic transcript view for request/answer-first reading
 - 🚨 clearer blocked / waiting status cues for faster triage
 - 🗂️ project-grouped thread view plus focus filters for larger dashboards
+- 🔐 clearer read-only / restricted-review guidance for delegated browser users
 - 🪶 expose a cleaner browser-facing thread/session model without leaking host absolute paths in normal API payloads
 
 ### Control
