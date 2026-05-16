@@ -72,14 +72,16 @@ Responsibilities:
 Current baseline in the prototype:
 - browser server binds to `127.0.0.1` by default
 - optional local browser login users with cookie-based sessions
+- role/mode/scope-based browser access controls (`owner` / `admin` / `member`, `read_only` / `input_only` / `control`, visibility scope, action-thread scope)
+- optional `CODEX_POCKET_ALLOWED_ORIGINS` guard for cookie-authenticated `POST` actions
+- optional forced secure cookies for HTTPS reverse-proxy deployments
 - no need to expose the Codex app-server directly to remote clients
 - prefer LAN/VPN/private routes over public exposure
 
 Still missing / future hardening:
 - stronger auth/session management beyond local single-host users
-- clearer multi-user separation
-- optional read-only mode
 - tighter auditability for control inputs
+- fuller production-grade reverse-proxy / internet-exposure guidance
 
 ## Open questions
 

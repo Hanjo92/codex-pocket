@@ -86,8 +86,8 @@ Shipped foundation so far:
 
 Remaining work in this area:
 
-- stronger docs/hardening guidance for shared internal deployments
 - decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model
+- if broader sharing is needed later, add stronger auth/session/audit controls beyond the current internal-use baseline
 
 Why it matters:
 
@@ -101,7 +101,7 @@ Possible follow-ons:
 - notification digests for attention-needed threads
 - better multi-host support
 - richer timeline/activity views
-- stronger deployment hardening guidance
+- stronger deployment hardening guidance beyond the current internal-sharing checklist/origin guard baseline
 
 ## Current product lens
 

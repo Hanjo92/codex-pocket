@@ -271,6 +271,17 @@ npm run print-env -- <account-name>
 npm run doctor -- <account-name>
 ```
 
+### Shared/internal deployment hardening knobs
+
+```bash
+export CODEX_POCKET_ALLOWED_ORIGINS="https://codex-pocket.example.com,https://pocket.internal"
+export CODEX_POCKET_FORCE_SECURE_COOKIES=true
+```
+
+- `CODEX_POCKET_ALLOWED_ORIGINS` limits cookie-authenticated `POST` requests to specific browser origins
+- `CODEX_POCKET_FORCE_SECURE_COOKIES=true` forces the session cookie to stay `Secure` behind HTTPS reverse proxies even if proxy headers are incomplete
+- see `docs/deployment-hardening.md` for the fuller checklist and reverse-proxy notes
+
 `doctor` checks things like:
 - `CODEX_HOME` presence
 - `state_5.sqlite` presence
@@ -307,6 +318,7 @@ A small local companion service handles:
 
 For deeper notes:
 - `docs/architecture.md`
+- `docs/deployment-hardening.md`
 - `docs/mvp-plan.md`
 - `docs/next-steps.md`
 - `docs/roadmap.md`
@@ -343,7 +355,10 @@ For deeper notes:
 - browser login users are created locally on the Codex host via CLI; they are not self-service from the web UI
 - use lower roles/modes plus optional visibility/action scope for shared/internal viewers instead of handing out full control by default
 - browser-facing API payloads are intentionally reduced so normal thread/session reads do not expose host absolute paths like `cwd` or rollout file locations
+- optional `CODEX_POCKET_ALLOWED_ORIGINS` lets you narrow which browser origins may issue authenticated `POST` actions
+- optional `CODEX_POCKET_FORCE_SECURE_COOKIES=true` is useful behind HTTPS reverse proxies that do not reliably forward `X-Forwarded-Proto`
 - anyone who can reach the web UI and satisfy auth may still inspect allowed transcripts and actions inside their granted scope, so treat network exposure carefully
+- for a safer internal-exposure checklist, see `docs/deployment-hardening.md`
 
 ---
 

@@ -24,6 +24,11 @@ const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS ||
 const sessionCookieName = 'codex-pocket-session';
 const DEFAULT_PERMISSION_MODE = 'control';
 const DEFAULT_USER_ROLE = 'member';
+const allowedOrigins = String(process.env.CODEX_POCKET_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+const forceSecureCookies = String(process.env.CODEX_POCKET_FORCE_SECURE_COOKIES || '').trim().toLowerCase() === 'true';
 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
@@ -66,7 +71,37 @@ function serializeCookie(name, value, options = {}) {
 }
 
 function shouldUseSecureCookies(req) {
-  return req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted;
+  return forceSecureCookies || req.headers['x-forwarded-proto'] === 'https' || req.socket?.encrypted;
+}
+
+function getRequestOrigin(req) {
+  return String(req.headers.origin || '').trim();
+}
+
+function isAllowedOrigin(req) {
+  if (!allowedOrigins.length) return true;
+  const origin = getRequestOrigin(req);
+  if (!origin) return true;
+  return allowedOrigins.includes(origin);
+}
+
+function getSecurityHeaders(contentType = 'text/plain; charset=utf-8') {
+  return {
+    'content-type': contentType,
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+    'referrer-policy': 'no-referrer',
+    'cache-control': 'no-store',
+  };
+}
+
+function rejectDisallowedOrigin(req, res) {
+  if (isAllowedOrigin(req)) return false;
+  sendJson(res, 403, {
+    error: 'Origin not allowed',
+    allowedOrigins,
+  });
+  return true;
 }
 
 async function loadUsers() {
@@ -1242,7 +1277,7 @@ async function startSessionEventStream(req, res, threadId) {
 
 function sendJson(res, statusCode, payload, headers = {}) {
   res.writeHead(statusCode, {
-    'content-type': 'application/json; charset=utf-8',
+    ...getSecurityHeaders('application/json; charset=utf-8'),
     ...headers,
   });
   res.end(JSON.stringify(payload));
@@ -1256,6 +1291,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+  if (req.method === 'POST' && rejectDisallowedOrigin(req, res)) {
+    return;
+  }
 
   if (url.pathname === '/health') {
     const users = await loadUsers();
@@ -1354,10 +1393,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/') {
     try {
       const html = await getIndexHtml();
-      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.writeHead(200, getSecurityHeaders('text/html; charset=utf-8'));
       res.end(html);
     } catch (error) {
-      res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' });
+      res.writeHead(500, getSecurityHeaders('text/plain; charset=utf-8'));
       res.end(`Failed to load UI: ${error.message}`);
     }
     return;
@@ -1608,7 +1647,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+  res.writeHead(404, getSecurityHeaders('text/plain; charset=utf-8'));
   res.end('Not found');
 });
 
@@ -1618,4 +1657,10 @@ server.listen(port, host, async () => {
   console.log(`Reading Codex data from ${codexHome}`);
   console.log(`Input bridge target: ${appServerUrl}`);
   console.log(`Login auth ${users.length ? `enabled (${users.length} user${users.length === 1 ? '' : 's'})` : 'disabled'}`);
+  if (allowedOrigins.length) {
+    console.log(`Allowed browser origins: ${allowedOrigins.join(', ')}`);
+  }
+  if (forceSecureCookies) {
+    console.log('Secure cookies forced on for reverse-proxy / HTTPS deployments');
+  }
 });
