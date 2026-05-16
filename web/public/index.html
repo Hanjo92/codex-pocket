@@ -1327,6 +1327,15 @@
                 <option value="all">All threads</option>
                 <option value="attention">Needs attention</option>
                 <option value="activity">Recent activity</option>
+                <option value="projects">Project groups</option>
+              </select>
+            </div>
+            <div>
+              <select id="threadFocusMode" aria-label="Thread focus filter">
+                <option value="all">All focus</option>
+                <option value="unread">Unread only</option>
+                <option value="pinned">Pinned only</option>
+                <option value="live">Live terminal only</option>
               </select>
             </div>
             <div>
@@ -1498,6 +1507,7 @@
       const attentionDigestDismissBtn = document.getElementById('attentionDigestDismiss');
       const threadSummaryEl = document.getElementById('threadSummary');
       const threadViewModeEl = document.getElementById('threadViewMode');
+      const threadFocusModeEl = document.getElementById('threadFocusMode');
       const threadSortEl = document.getElementById('threadSort');
       const projectSortEl = document.getElementById('projectSort');
       const projectFilterEl = document.getElementById('projectFilter');
@@ -1567,6 +1577,12 @@
           threadViewModeAll: 'All threads',
           threadViewModeAttention: 'Needs attention',
           threadViewModeActivity: 'Recent activity',
+          threadViewModeProjects: 'Project groups',
+          threadFocusModeAria: 'Thread focus filter',
+          threadFocusAll: 'All focus',
+          threadFocusUnread: 'Unread only',
+          threadFocusPinned: 'Pinned only',
+          threadFocusLive: 'Live terminal only',
           threadSortAria: 'Thread sort',
           threadSortUpdatedDesc: 'Most recently updated',
           threadSortUpdatedAsc: 'Least recently updated',
@@ -1791,6 +1807,12 @@
           threadViewModeAll: '전체 스레드',
           threadViewModeAttention: 'attention 필요',
           threadViewModeActivity: '최근 activity',
+          threadViewModeProjects: '프로젝트별 묶음',
+          threadFocusModeAria: '스레드 집중 필터',
+          threadFocusAll: '전체 focus',
+          threadFocusUnread: '안 읽은 것만',
+          threadFocusPinned: '고정한 것만',
+          threadFocusLive: '라이브 터미널만',
           threadSortAria: '스레드 정렬',
           threadSortUpdatedDesc: '최신 업데이트순',
           threadSortUpdatedAsc: '오래된 업데이트순',
@@ -2020,6 +2042,7 @@
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
+      let threadFocusMode = localStorage.getItem('codex-pocket:thread-focus-mode') || 'all';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
       let availableHosts = [];
       let selectedHostName = '';
@@ -2139,6 +2162,15 @@
           'cwd-asc': t('threadSortProjectAsc'),
           attention: t('threadSortAttention'),
         })[value] || t('threadSortUpdatedDesc');
+      }
+
+      function getThreadFocusLabel(value = threadFocusMode) {
+        return ({
+          all: t('threadFocusAll'),
+          unread: t('threadFocusUnread'),
+          pinned: t('threadFocusPinned'),
+          live: t('threadFocusLive'),
+        })[value] || t('threadFocusAll');
       }
 
       function getTranscriptViewLabel(value = transcriptViewMode) {
@@ -2605,6 +2637,12 @@
         threadViewModeEl.options[0].textContent = t('threadViewModeAll');
         threadViewModeEl.options[1].textContent = t('threadViewModeAttention');
         threadViewModeEl.options[2].textContent = t('threadViewModeActivity');
+        threadViewModeEl.options[3].textContent = t('threadViewModeProjects');
+        threadFocusModeEl.setAttribute('aria-label', t('threadFocusModeAria'));
+        threadFocusModeEl.options[0].textContent = t('threadFocusAll');
+        threadFocusModeEl.options[1].textContent = t('threadFocusUnread');
+        threadFocusModeEl.options[2].textContent = t('threadFocusPinned');
+        threadFocusModeEl.options[3].textContent = t('threadFocusLive');
         threadSortEl.setAttribute('aria-label', t('threadSortAria'));
         threadSortEl.options[0].textContent = t('threadSortUpdatedDesc');
         threadSortEl.options[1].textContent = t('threadSortUpdatedAsc');
@@ -2906,9 +2944,22 @@
         const filteredByMode = threadViewMode === 'attention'
           ? filteredByProject.filter((thread) => isAttentionThread(thread))
           : filteredByProject;
+        const filteredByFocus = filteredByMode.filter((thread) => {
+          switch (threadFocusMode) {
+            case 'unread':
+              return isThreadNew(thread);
+            case 'pinned':
+              return isThreadPinned(thread);
+            case 'live':
+              return !!thread.terminalAvailable;
+            case 'all':
+            default:
+              return true;
+          }
+        });
         const filtered = !q
-          ? filteredByMode
-          : filteredByMode.filter((thread) => normalizedThreadSearch(thread).includes(q));
+          ? filteredByFocus
+          : filteredByFocus.filter((thread) => normalizedThreadSearch(thread).includes(q));
         const sorted = filtered.sort(compareThreads);
         if (threadViewMode === 'attention' && threadSort !== 'attention') {
           return sorted.sort((a, b) => {
@@ -3152,11 +3203,16 @@
       }
 
       function setThreadViewMode(value) {
-        threadViewMode = ['attention', 'activity'].includes(value) ? value : 'all';
+        threadViewMode = ['attention', 'activity', 'projects'].includes(value) ? value : 'all';
         localStorage.setItem('codex-pocket:thread-view-mode', threadViewMode);
         if (threadViewMode === 'attention' && threadSort === 'updated-desc') {
           setThreadSort('attention');
         }
+      }
+
+      function setThreadFocusMode(value) {
+        threadFocusMode = ['unread', 'pinned', 'live'].includes(value) ? value : 'all';
+        localStorage.setItem('codex-pocket:thread-focus-mode', threadFocusMode);
       }
 
       function setThreadSort(value) {
@@ -3287,6 +3343,9 @@
           `<span class="chip">${escapeHtml(t('attentionChip', { count: attentionCount }))}</span>`,
           `<span class="chip">${escapeHtml(t('pinnedChip', { count: pinnedCount }))}</span>`,
         ];
+        if (threadFocusMode !== 'all') {
+          items.push(`<span class="chip">${escapeHtml(getThreadFocusLabel(threadFocusMode))}</span>`);
+        }
         if (projectFilter) {
           items.push(`<span class="chip">${escapeHtml(t('projectChip', { project: projectFilter }))}</span>`);
         }
@@ -3959,6 +4018,29 @@
         }).join('');
       }
 
+      function renderProjectSections(threads = []) {
+        const groups = getProjectStats(threads)
+          .sort((a, b) => (b.attentionCount || 0) - (a.attentionCount || 0) || (b.unreadCount || 0) - (a.unreadCount || 0) || (b.updatedAtMs || 0) - (a.updatedAtMs || 0))
+          .map((project) => ({
+            ...project,
+            items: threads.filter((thread) => getProjectName(thread) === project.name),
+          }))
+          .filter((group) => group.items.length);
+
+        return groups.map((group) => `
+          <details class="thread-section" open>
+            <summary class="thread-section-head">
+              <div class="thread-section-title">${escapeHtml(group.name)}</div>
+              <div class="thread-section-count">${escapeHtml(String(group.items.length))}</div>
+              <div class="thread-section-toggle">${group.attentionCount ? `⚠ ${escapeHtml(String(group.attentionCount))}` : group.unreadCount ? `${escapeHtml(String(group.unreadCount))} ${escapeHtml(t('newBadge'))}` : ''}</div>
+            </summary>
+            <div class="thread-section-body">
+              ${group.items.map((thread, index) => renderThreadItem(thread, index)).join('')}
+            </div>
+          </details>
+        `).join('');
+      }
+
       function renderPinnedThreadSections(threads = []) {
         const pinned = threads.filter((thread) => isThreadPinned(thread));
         const others = threads.filter((thread) => !isThreadPinned(thread));
@@ -4039,7 +4121,9 @@
           ? renderAttentionSections(filteredThreads)
           : threadViewMode === 'activity'
             ? renderActivityTimeline(filteredThreads)
-            : renderPinnedThreadSections(filteredThreads);
+            : threadViewMode === 'projects'
+              ? renderProjectSections(filteredThreads)
+              : renderPinnedThreadSections(filteredThreads);
 
         for (const sectionEl of threadListEl.querySelectorAll('[data-attention-section]')) {
           const toggleEl = sectionEl.querySelector('.thread-section-toggle');
@@ -4331,6 +4415,7 @@
       async function boot() {
         threadSearchEl.value = threadQuery;
         threadViewModeEl.value = threadViewMode;
+        threadFocusModeEl.value = threadFocusMode;
         threadSortEl.value = threadSort;
         projectSortEl.value = projectSort;
         transcriptViewEl.value = transcriptViewMode;
@@ -4373,6 +4458,18 @@
 
       threadViewModeEl.addEventListener('change', async (event) => {
         setThreadViewMode(event.target.value);
+        renderThreadList(lastThreads);
+        const filteredThreads = getFilteredThreads(lastThreads);
+        const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+        if (nextThreadId && nextThreadId !== selectedThreadId) {
+          setSelectedThread(nextThreadId);
+          renderThreadList(lastThreads);
+          await loadSession();
+        }
+      });
+
+      threadFocusModeEl.addEventListener('change', async (event) => {
+        setThreadFocusMode(event.target.value);
         renderThreadList(lastThreads);
         const filteredThreads = getFilteredThreads(lastThreads);
         const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
