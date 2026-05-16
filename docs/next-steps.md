@@ -33,3 +33,4 @@
 3. go beyond the new internal-sharing hardening baseline with stronger auth/session/audit controls if broader self-hosted exposure is needed
 4. add stronger filtering or richer list organization if the thread list grows further
 5. polish delegated read-only/restricted review flows with stronger context cues where needed
+6. consider richer activity timelines or multi-host views as the next oversight layer

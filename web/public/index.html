@@ -212,6 +212,67 @@
         gap: 6px;
         flex-wrap: wrap;
       }
+      .attention-digest {
+        margin-top: 10px;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(248, 113, 113, 0.18);
+        background: linear-gradient(180deg, rgba(248, 113, 113, 0.08), rgba(15, 23, 42, 0.88));
+        display: grid;
+        gap: 8px;
+      }
+      .attention-digest[hidden] {
+        display: none;
+      }
+      .attention-digest-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .attention-digest-title {
+        font-size: 13px;
+        font-weight: 800;
+      }
+      .attention-digest-body {
+        font-size: 12px;
+        color: #dbe7ff;
+        line-height: 1.45;
+      }
+      .attention-digest-list {
+        display: grid;
+        gap: 6px;
+      }
+      .attention-digest-item {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 100%;
+        text-align: left;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        background: rgba(15, 23, 42, 0.65);
+        color: var(--text);
+        border-radius: 12px;
+        padding: 8px 10px;
+        display: grid;
+        gap: 4px;
+      }
+      .attention-digest-item-title {
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .attention-digest-item-meta {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .attention-digest-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .attention-digest-actions button.secondary {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
       .chip {
         display: inline-flex;
         align-items: center;
@@ -1150,6 +1211,20 @@
             </div>
           </div>
           <div class="thread-summary" id="threadSummary"></div>
+          <div class="attention-digest" id="attentionDigest" hidden>
+            <div class="attention-digest-head">
+              <div>
+                <div class="attention-digest-title" id="attentionDigestTitle">Attention digest</div>
+                <div class="attention-digest-body" id="attentionDigestBody"></div>
+              </div>
+              <div class="attention-digest-actions">
+                <button id="attentionDigestOpenInbox" class="secondary">Open inbox</button>
+                <button id="attentionDigestDismiss" class="secondary">Dismiss</button>
+              </div>
+            </div>
+            <div class="thread-summary" id="attentionDigestChips"></div>
+            <div class="attention-digest-list" id="attentionDigestList"></div>
+          </div>
           <div class="toolbar">
             <button id="refreshThreads">Refresh list</button>
           </div>
@@ -1278,6 +1353,13 @@
       const threadListEl = document.getElementById('threadList');
       const threadListMetaEl = document.getElementById('threadListMeta');
       const threadSearchEl = document.getElementById('threadSearch');
+      const attentionDigestEl = document.getElementById('attentionDigest');
+      const attentionDigestTitleEl = document.getElementById('attentionDigestTitle');
+      const attentionDigestBodyEl = document.getElementById('attentionDigestBody');
+      const attentionDigestChipsEl = document.getElementById('attentionDigestChips');
+      const attentionDigestListEl = document.getElementById('attentionDigestList');
+      const attentionDigestOpenInboxBtn = document.getElementById('attentionDigestOpenInbox');
+      const attentionDigestDismissBtn = document.getElementById('attentionDigestDismiss');
       const threadSummaryEl = document.getElementById('threadSummary');
       const threadViewModeEl = document.getElementById('threadViewMode');
       const threadSortEl = document.getElementById('threadSort');
@@ -1462,6 +1544,11 @@
           stickyMetaEmpty: 'Your project filter and current selected thread stay visible here.{activity}',
           attentionCount: 'attention {count}',
           attentionChip: 'Inbox: {count}',
+          attentionDigestTitle: 'Attention digest',
+          attentionDigestBody: '{count} threads currently need attention.',
+          attentionDigestDismiss: 'Dismiss',
+          attentionDigestOpenInbox: 'Open inbox',
+          attentionDigestNewBadge: 'new since last dismiss',
           attentionSectionFailed: 'Failed',
           attentionSectionApproval: 'Waiting approval',
           attentionSectionInput: 'Waiting input',
@@ -1669,6 +1756,11 @@
           stickyMetaEmpty: '프로젝트 필터와 현재 선택 스레드가 여기에 계속 보여.{activity}',
           attentionCount: 'attention {count}',
           attentionChip: '인박스 {count}',
+          attentionDigestTitle: 'attention digest',
+          attentionDigestBody: '지금 attention 필요한 스레드가 {count}개 있어.',
+          attentionDigestDismiss: '닫기',
+          attentionDigestOpenInbox: 'inbox 열기',
+          attentionDigestNewBadge: '마지막 닫기 이후 새로 생김',
           attentionSectionFailed: '실패',
           attentionSectionApproval: '승인 대기',
           attentionSectionInput: '입력 대기',
@@ -1810,6 +1902,7 @@
         }
       })();
       let lastThreads = [];
+      let attentionDigestDismissedAt = Number(localStorage.getItem('codex-pocket:attention-digest-dismissed-at') || 0) || 0;
       let pinnedThreadIds = (() => {
         try {
           const parsed = JSON.parse(localStorage.getItem('codex-pocket:pinned-threads') || '[]');
@@ -2314,6 +2407,9 @@
         threadSortEl.options[4].textContent = t('threadSortAttention');
         refreshThreadsBtn.textContent = t('refreshList');
         refreshBtn.textContent = t('refreshCurrentThread');
+        if (attentionDigestTitleEl) attentionDigestTitleEl.textContent = t('attentionDigestTitle');
+        if (attentionDigestOpenInboxBtn) attentionDigestOpenInboxBtn.textContent = t('attentionDigestOpenInbox');
+        if (attentionDigestDismissBtn) attentionDigestDismissBtn.textContent = t('attentionDigestDismiss');
         updatePinnedThreadButton();
         expandAllBtn.textContent = t('expandAll');
         collapseAllBtn.textContent = t('collapseAll');
@@ -2985,6 +3081,74 @@
         threadSummaryEl.innerHTML = items.join('');
       }
 
+      function dismissAttentionDigest() {
+        attentionDigestDismissedAt = Date.now();
+        localStorage.setItem('codex-pocket:attention-digest-dismissed-at', String(attentionDigestDismissedAt));
+        renderAttentionDigest(lastThreads);
+      }
+
+      function renderAttentionDigest(threads = []) {
+        if (!attentionDigestEl) return;
+        const attentionThreads = threads
+          .filter((thread) => isAttentionThread(thread))
+          .sort((a, b) => {
+            const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+            if (priorityDiff) return priorityDiff;
+            return (b.updatedAtMs || 0) - (a.updatedAtMs || 0);
+          });
+        const latestAttentionAt = attentionThreads.reduce((max, thread) => Math.max(max, Number(thread.updatedAtMs || 0)), 0);
+        if (!attentionThreads.length || (attentionDigestDismissedAt && latestAttentionAt <= attentionDigestDismissedAt)) {
+          attentionDigestEl.hidden = true;
+          attentionDigestListEl.innerHTML = '';
+          attentionDigestChipsEl.innerHTML = '';
+          return;
+        }
+        const counts = {
+          failed: attentionThreads.filter((thread) => thread.state === 'failed').length,
+          waiting_approval: attentionThreads.filter((thread) => thread.state === 'waiting_approval').length,
+          waiting_input: attentionThreads.filter((thread) => thread.state === 'waiting_input').length,
+          fresh: attentionThreads.filter((thread) => Number(thread.updatedAtMs || 0) > attentionDigestDismissedAt).length,
+        };
+        attentionDigestEl.hidden = false;
+        attentionDigestTitleEl.textContent = t('attentionDigestTitle');
+        attentionDigestBodyEl.textContent = t('attentionDigestBody', { count: attentionThreads.length });
+        attentionDigestOpenInboxBtn.textContent = t('attentionDigestOpenInbox');
+        attentionDigestDismissBtn.textContent = t('attentionDigestDismiss');
+        attentionDigestChipsEl.innerHTML = [
+          counts.failed ? `<span class="chip">${escapeHtml(t('attentionSectionFailed'))}: ${counts.failed}</span>` : '',
+          counts.waiting_approval ? `<span class="chip">${escapeHtml(t('attentionSectionApproval'))}: ${counts.waiting_approval}</span>` : '',
+          counts.waiting_input ? `<span class="chip">${escapeHtml(t('attentionSectionInput'))}: ${counts.waiting_input}</span>` : '',
+          counts.fresh ? `<span class="chip">${escapeHtml(t('attentionDigestNewBadge'))}: ${counts.fresh}</span>` : '',
+        ].filter(Boolean).join('');
+        attentionDigestListEl.innerHTML = attentionThreads.slice(0, 3).map((thread) => `
+          <button class="attention-digest-item" data-attention-thread-id="${escapeHtml(thread.id)}">
+            <div class="attention-digest-item-title">${escapeHtml(thread.title || t('untitledThread'))}</div>
+            <div>${renderStateBadgeMarkup(thread.state || 'unknown')}</div>
+            <div class="attention-digest-body">${escapeHtml(getThreadReasonSummary(thread))}</div>
+            <div class="attention-digest-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
+          </button>
+        `).join('');
+        for (const button of attentionDigestListEl.querySelectorAll('[data-attention-thread-id]')) {
+          button.addEventListener('click', () => {
+            const threadId = button.dataset.attentionThreadId || '';
+            if (!threadId) return;
+            if (threadViewMode !== 'attention') {
+              threadViewMode = 'attention';
+              if (threadViewModeEl) threadViewModeEl.value = threadViewMode;
+            }
+            if (threadSort !== 'attention') {
+              threadSort = 'attention';
+              localStorage.setItem('codex-pocket:thread-sort', threadSort);
+              if (threadSortEl) threadSortEl.value = threadSort;
+            }
+            setSelectedThread(threadId);
+            updatePinnedThreadButton();
+            renderThreadList(lastThreads);
+            loadSession();
+          });
+        }
+      }
+
       function classifyBlock(text = '') {
         const firstLine = String(text).split('\n').find(Boolean) || '';
         if (/\] developer$/i.test(firstLine)) return { kind: 'developer', label: 'developer', lowSignal: true };
@@ -3563,6 +3727,7 @@
         lastThreads = threads;
         renderProjectFilter(threads);
         renderPermissionManager();
+        renderAttentionDigest(threads);
         const filteredThreads = getFilteredThreads(threads);
         const isShortThreadList = filteredThreads.length <= 3;
         threadListEl.classList.toggle('is-short', isShortThreadList);
@@ -3630,6 +3795,7 @@
         } catch (error) {
           threadListMetaEl.textContent = t('threadListLoadFailed');
           threadSummaryEl.innerHTML = '';
+          renderAttentionDigest([]);
           threadListEl.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
         }
       }
@@ -4077,6 +4243,15 @@
       });
 
       refreshBtn.addEventListener('click', loadSession);
+      attentionDigestOpenInboxBtn.addEventListener('click', () => {
+        threadViewMode = 'attention';
+        threadSort = 'attention';
+        localStorage.setItem('codex-pocket:thread-sort', threadSort);
+        if (threadViewModeEl) threadViewModeEl.value = threadViewMode;
+        if (threadSortEl) threadSortEl.value = threadSort;
+        renderThreadList(lastThreads);
+      });
+      attentionDigestDismissBtn.addEventListener('click', dismissAttentionDigest);
       togglePinnedThreadBtn.addEventListener('click', () => {
         const threadId = selectedThreadId || lastActiveThread?.id || '';
         if (!threadId) return;
