@@ -1115,6 +1115,20 @@
       .turn-block.low-signal {
         opacity: 0.9;
       }
+      .semantic-list {
+        margin: 6px 0 0;
+        padding-left: 18px;
+        display: grid;
+        gap: 4px;
+        color: #dbe7ff;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+      .semantic-note {
+        margin-top: 6px;
+        font-size: 11px;
+        color: var(--muted);
+      }
       details.turn-low-signal {
         border: 1px dashed rgba(255,255,255,0.12);
         border-radius: 10px;
@@ -1326,6 +1340,7 @@
             <select id="transcriptView" class="compact-select" aria-label="Transcript view mode">
               <option value="full">Full transcript</option>
               <option value="distilled">Distilled</option>
+              <option value="semantic">Semantic</option>
               <option value="changes">Changes only</option>
             </select>
             <select id="transcriptDensity" class="compact-select" aria-label="Intermediate detail visibility">
@@ -1545,6 +1560,7 @@
           transcriptViewAria: 'Transcript view mode',
           transcriptViewFull: 'Full transcript',
           transcriptViewDistilled: 'Distilled',
+          transcriptViewSemantic: 'Semantic',
           transcriptViewChanges: 'Changes only',
           transcriptDensityAria: 'Intermediate detail visibility',
           transcriptDensityHidden: 'Hide tools completely',
@@ -1763,6 +1779,7 @@
           transcriptViewAria: '트랜스크립트 보기 방식',
           transcriptViewFull: '전체 보기',
           transcriptViewDistilled: '요약 보기',
+          transcriptViewSemantic: '의미 중심 보기',
           transcriptViewChanges: '변경만 보기',
           transcriptDensityAria: '중간 과정 표시 방식',
           transcriptDensityHidden: 'tool 완전 숨김',
@@ -2079,6 +2096,7 @@
         return ({
           full: t('transcriptViewFull'),
           distilled: t('transcriptViewDistilled'),
+          semantic: t('transcriptViewSemantic'),
           changes: t('transcriptViewChanges'),
         })[value] || t('transcriptViewFull');
       }
@@ -2555,7 +2573,8 @@
         transcriptViewEl.setAttribute('aria-label', t('transcriptViewAria'));
         transcriptViewEl.options[0].textContent = t('transcriptViewFull');
         transcriptViewEl.options[1].textContent = t('transcriptViewDistilled');
-        transcriptViewEl.options[2].textContent = t('transcriptViewChanges');
+        transcriptViewEl.options[2].textContent = t('transcriptViewSemantic');
+        transcriptViewEl.options[3].textContent = t('transcriptViewChanges');
         transcriptDensityEl.setAttribute('aria-label', t('transcriptDensityAria'));
         transcriptDensityEl.options[0].textContent = t('transcriptDensityHidden');
         transcriptDensityEl.options[1].textContent = t('transcriptDensityNotesOnly');
@@ -3353,6 +3372,19 @@
         };
       }
 
+      function extractSemanticItems(text = '', maxItems = 4) {
+        const units = getComparisonUnits(text).map((item) => item.trim()).filter(Boolean);
+        return units.slice(0, maxItems);
+      }
+
+      function renderSemanticList(text = '', emptyText = '') {
+        const items = extractSemanticItems(text);
+        if (!items.length) {
+          return `<div class="semantic-note">${escapeHtml(emptyText)}</div>`;
+        }
+        return `<ul class="semantic-list">${items.map((item) => `<li>${escapeHtml(summarizeText(item, ''))}</li>`).join('')}</ul>`;
+      }
+
       function normalizeComparisonUnit(text = '') {
         return String(text)
           .replace(/^[-*•]\s+/, '')
@@ -3571,6 +3603,7 @@
           if (block.classification.kind === 'assistant') return false;
           return shouldShowLowSignalBlock(block);
         });
+        const semanticMode = transcriptViewMode === 'semantic';
         const hideUserInBody = transcriptViewMode === 'changes';
         const badges = [
           !hideUserInBody && primaryUserBlock ? `<span class="output-badge user">${escapeHtml(t('myInput'))}</span>` : '',
@@ -3600,7 +3633,7 @@
             <div class="turn-block">
               <div class="output-summary-badges"><span class="output-badge user">${escapeHtml(t('myInput'))}</span></div>
               <div class="output-summary-title">${escapeHtml(summarizeText(primaryUserBlock.body, t('noInput')))}</div>
-              <pre>${escapeHtml(primaryUserBlock.body || `[${t('noInput')}]`)}</pre>
+              ${semanticMode ? renderSemanticList(primaryUserBlock.body, t('noInput')) : `<pre>${escapeHtml(primaryUserBlock.body || `[${t('noInput')}]`)}</pre>`}
             </div>
           ` : '',
           finalAssistantBlock ? `
@@ -3608,7 +3641,8 @@
               <div class="output-summary-badges"><span class="output-badge assistant">${escapeHtml(t('finalAnswer'))}</span></div>
               <div class="output-summary-title">${escapeHtml(summarizeText(finalAssistantBlock.body, t('answerPending')))}</div>
               ${changeHighlight}
-              <pre>${escapeHtml(finalAssistantBlock.body || t('noAnswer'))}</pre>
+              ${semanticMode ? renderSemanticList(finalAssistantBlock.body, t('noAnswer')) : `<pre>${escapeHtml(finalAssistantBlock.body || t('noAnswer'))}</pre>`}
+              ${semanticMode && (toolCount || noteCount) ? `<div class="semantic-note">${escapeHtml(`${toolCount ? `tools ${toolCount}` : ''}${toolCount && noteCount ? ' · ' : ''}${noteCount ? `notes ${noteCount}` : ''}`)}</div>` : ''}
             </div>
           ` : '',
         ].filter(Boolean).join('');
@@ -3667,7 +3701,7 @@
         if (transcriptViewMode === 'changes') {
           return getChangeFocusedGroups(groups);
         }
-        if (transcriptViewMode === 'distilled') {
+        if (transcriptViewMode === 'distilled' || transcriptViewMode === 'semantic') {
           return groups.filter((group) => group.type === 'turn' || (group.type === 'single' && !group.block.classification.lowSignal)).slice(-8);
         }
         return groups;
