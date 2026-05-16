@@ -97,7 +97,6 @@ A lighter browser surface becomes more useful when it can be safely shared witho
 
 Possible follow-ons:
 
-- better multi-host support
 - stronger deployment hardening guidance beyond the current internal-sharing checklist/origin guard baseline
 
 ## Current product lens

@@ -10,6 +10,7 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.resolve(__dirname, '../web/public');
 const runDir = path.resolve(__dirname, '../run');
 const usersPath = path.join(runDir, 'users.json');
+const accountsPath = path.join(runDir, 'accounts.json');
 const port = Number(process.env.PORT || 4782);
 const host = process.env.HOST || process.env.CODEX_POCKET_HOST || '127.0.0.1';
 const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '', '.codex');
@@ -117,6 +118,45 @@ async function loadUsers() {
 
 async function saveUsers(users = []) {
   await writeFile(usersPath, `${JSON.stringify({ users }, null, 2)}\n`, 'utf8');
+}
+
+async function loadAccountsConfig() {
+  try {
+    const raw = await readFile(accountsPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    return {
+      defaultAccount: String(parsed.defaultAccount || '').trim(),
+      accounts: Array.isArray(parsed.accounts) ? parsed.accounts : [],
+    };
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return { defaultAccount: '', accounts: [] };
+    }
+    throw error;
+  }
+}
+
+function isLoopbackHost(value = '') {
+  const normalized = String(value || '').trim().toLowerCase();
+  return !normalized || ['127.0.0.1', '0.0.0.0', 'localhost', '::1', '::'].includes(normalized);
+}
+
+function getCurrentAccountName(accounts = []) {
+  const match = accounts.find((account) => Number(account?.port || 0) === port && String(account?.codexHome || '').trim() === codexHome);
+  if (match?.name) return String(match.name);
+  const hostMatch = accounts.find((account) => Number(account?.port || 0) === port && String(account?.host || '').trim() === host);
+  if (hostMatch?.name) return String(hostMatch.name);
+  return '';
+}
+
+function buildBrowserUrlForAccount(account = {}, req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').trim();
+  const protocol = forwardedProto || (req.socket?.encrypted ? 'https' : 'http');
+  const requestHost = String(req.headers.host || '').trim();
+  const requestHostname = requestHost.split(':')[0] || 'localhost';
+  const targetHost = isLoopbackHost(account?.host) ? requestHostname : String(account?.host || requestHostname).trim();
+  const targetPort = Number(account?.port || port) || port;
+  return `${protocol}://${targetHost}:${targetPort}`;
 }
 
 function normalizePermissionMode(mode = '') {
@@ -1413,6 +1453,28 @@ const server = http.createServer(async (req, res) => {
           threadIds: authState?.scope?.threadIds || [],
           actionThreadIds: authState?.scope?.actionThreadIds || [],
         },
+      });
+    } catch (error) {
+      sendJson(res, 500, { error: error.message });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/hosts') {
+    try {
+      const config = await loadAccountsConfig();
+      const currentAccountName = getCurrentAccountName(config.accounts);
+      sendJson(res, 200, {
+        currentAccount: currentAccountName || config.defaultAccount || '',
+        hosts: config.accounts.map((account) => ({
+          name: String(account?.name || '').trim(),
+          host: String(account?.host || '').trim(),
+          port: Number(account?.port || 0),
+          codexHome: String(account?.codexHome || '').trim(),
+          browserUrl: buildBrowserUrlForAccount(account, req),
+          current: String(account?.name || '').trim() === currentAccountName,
+          default: String(account?.name || '').trim() === String(config.defaultAccount || '').trim(),
+        })),
       });
     } catch (error) {
       sendJson(res, 500, { error: error.message });

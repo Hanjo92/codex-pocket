@@ -337,6 +337,33 @@
         align-items: center;
         flex-wrap: wrap;
       }
+      .host-switcher {
+        margin-bottom: 10px;
+        display: grid;
+        gap: 6px;
+      }
+      .host-switcher[hidden] {
+        display: none;
+      }
+      .host-switcher-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .host-switcher-label {
+        font-size: 11px;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .host-switcher-controls {
+        display: flex;
+        gap: 8px;
+      }
+      .host-switcher-controls select,
+      .host-switcher-controls button {
+        margin: 0;
+      }
       .project-filter-actions button.secondary {
         background: var(--panel-2);
         color: var(--text);
@@ -1231,6 +1258,15 @@
                 <button type="button" id="toggleProjects" class="secondary">Expand</button>
               </div>
             </div>
+            <div class="host-switcher" id="hostSwitcher" hidden>
+              <div class="host-switcher-head">
+                <div class="host-switcher-label" id="hostSwitcherLabel">Hosts</div>
+              </div>
+              <div class="host-switcher-controls">
+                <select id="hostSelect" aria-label="Host switcher"></select>
+                <button type="button" id="openHost" class="secondary">Open</button>
+              </div>
+            </div>
             <div class="project-chips" id="projectFilter" aria-label="Project filter"></div>
             <div class="thread-search">
               <input id="threadSearch" type="search" placeholder="Search title, project, or source" autocomplete="off" />
@@ -1392,6 +1428,10 @@
       const threadPanelTitleEl = document.getElementById('threadPanelTitle');
       const projectFilterLeadEl = document.getElementById('projectFilterLead');
       const threadPanelEl = document.getElementById('threadPanel');
+      const hostSwitcherEl = document.getElementById('hostSwitcher');
+      const hostSwitcherLabelEl = document.getElementById('hostSwitcherLabel');
+      const hostSelectEl = document.getElementById('hostSelect');
+      const openHostBtn = document.getElementById('openHost');
       const threadListEl = document.getElementById('threadList');
       const threadListMetaEl = document.getElementById('threadListMeta');
       const threadSearchEl = document.getElementById('threadSearch');
@@ -1463,6 +1503,11 @@
           collapse: 'Collapse',
           projectFilterAria: 'Project filter',
           projectSortAria: 'Project sort',
+          hostSwitcherLabel: 'Hosts',
+          hostSwitcherAria: 'Host switcher',
+          openHost: 'Open',
+          currentHostBadge: 'current',
+          defaultHostBadge: 'default',
           threadSearchPlaceholder: 'Search title, project, or source',
           threadViewModeAria: 'Thread view mode',
           threadViewModeAll: 'All threads',
@@ -1676,6 +1721,11 @@
           collapse: '접기',
           projectFilterAria: '프로젝트 필터',
           projectSortAria: '프로젝트 정렬',
+          hostSwitcherLabel: '호스트',
+          hostSwitcherAria: '호스트 전환',
+          openHost: '열기',
+          currentHostBadge: '현재',
+          defaultHostBadge: '기본',
           threadSearchPlaceholder: '제목, 프로젝트, source 검색',
           threadViewModeAria: '스레드 보기 방식',
           threadViewModeAll: '전체 스레드',
@@ -1905,6 +1955,8 @@
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
+      let availableHosts = [];
+      let selectedHostName = '';
       let projectSort = localStorage.getItem('codex-pocket:project-sort') || 'recent';
       let projectFilter = localStorage.getItem('codex-pocket:project-filter') || '';
       let transcriptViewMode = localStorage.getItem('codex-pocket:transcript-view') || 'full';
@@ -2042,6 +2094,47 @@
       function setOutputLockedMessage() {
         outputEl.innerHTML = `<div class="empty">${escapeHtml(t('loginToLoad'))}</div>`;
         if (transcriptDigestEl) transcriptDigestEl.hidden = true;
+      }
+
+      function renderHostSwitcher() {
+        if (!hostSwitcherEl || !hostSelectEl) return;
+        hostSwitcherLabelEl.textContent = t('hostSwitcherLabel');
+        hostSelectEl.setAttribute('aria-label', t('hostSwitcherAria'));
+        openHostBtn.textContent = t('openHost');
+        if (availableHosts.length <= 1) {
+          hostSwitcherEl.hidden = true;
+          hostSelectEl.innerHTML = '';
+          return;
+        }
+        hostSwitcherEl.hidden = false;
+        hostSelectEl.innerHTML = availableHosts.map((entry) => {
+          const flags = [entry.current ? t('currentHostBadge') : '', entry.default ? t('defaultHostBadge') : ''].filter(Boolean).join(' · ');
+          const label = flags ? `${entry.name} (${flags})` : entry.name;
+          return `<option value="${escapeHtml(entry.name)}">${escapeHtml(label)}</option>`;
+        }).join('');
+        const fallback = availableHosts.find((entry) => entry.current)?.name || availableHosts[0]?.name || '';
+        hostSelectEl.value = selectedHostName || fallback;
+      }
+
+      async function loadHosts() {
+        if (!authenticated && authRequired) {
+          availableHosts = [];
+          selectedHostName = '';
+          renderHostSwitcher();
+          return;
+        }
+        try {
+          const response = await apiFetch('/api/hosts', { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || 'Host list request failed');
+          availableHosts = Array.isArray(data.hosts) ? data.hosts : [];
+          selectedHostName = data.currentAccount || availableHosts.find((entry) => entry.current)?.name || availableHosts[0]?.name || '';
+          renderHostSwitcher();
+        } catch {
+          availableHosts = [];
+          selectedHostName = '';
+          renderHostSwitcher();
+        }
       }
 
       function getPermissionLabel(mode = authPermissionMode) {
@@ -2440,6 +2533,7 @@
         projectSortEl.options[1].textContent = t('projectSortName');
         projectFilterEl.setAttribute('aria-label', t('projectFilterAria'));
         threadSearchEl.placeholder = t('threadSearchPlaceholder');
+        renderHostSwitcher();
         threadViewModeEl.setAttribute('aria-label', t('threadViewModeAria'));
         threadViewModeEl.options[0].textContent = t('threadViewModeAll');
         threadViewModeEl.options[1].textContent = t('threadViewModeAttention');
@@ -2812,6 +2906,7 @@
         const response = await fetch('/auth/session', { cache: 'no-store' });
         const data = await response.json();
         setAuthUiState(data.authenticated, data.authRequired, data.username || '', data.permissionMode || 'control', data.role || 'owner', data.scope || null, data.capabilities || null);
+        await loadHosts();
         return data;
       }
 
@@ -4114,6 +4209,7 @@
         }
         await loadPermissionManager();
         await loadThreads();
+        await loadHosts();
         await loadSession();
         connectSessionEvents();
         startRefreshLoops();
@@ -4129,6 +4225,15 @@
           renderThreadList(lastThreads);
           await loadSession();
         }
+      });
+
+      hostSelectEl.addEventListener('change', (event) => {
+        selectedHostName = event.target.value || '';
+      });
+      openHostBtn.addEventListener('click', () => {
+        const selected = availableHosts.find((entry) => entry.name === (hostSelectEl.value || selectedHostName));
+        if (!selected?.browserUrl) return;
+        window.location.href = selected.browserUrl;
       });
 
       threadViewModeEl.addEventListener('change', async (event) => {
@@ -4176,6 +4281,7 @@
           authPasswordInputEl.value = '';
           await loadPermissionManager();
           await loadThreads();
+          await loadHosts();
           await loadSession();
           connectSessionEvents();
           startRefreshLoops();
@@ -4333,6 +4439,7 @@
       });
       refreshThreadsBtn.addEventListener('click', async () => {
         await loadThreads();
+        await loadHosts();
         await loadSession();
       });
 

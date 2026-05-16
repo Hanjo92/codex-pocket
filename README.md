@@ -59,6 +59,7 @@ If the official Codex app is best at **remote control**, `codex-pocket` wants to
 - 🧠 browser-language detection + saved preference
 - 🚨 attention digest for urgent thread triage
 - 🕒 recent activity view for cross-thread scanning
+- 🧭 first-pass multi-host/account browser switcher
 - 📌 project-first navigation and sticky current-context view
 
 ### Local ops
