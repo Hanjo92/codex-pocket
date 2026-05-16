@@ -609,6 +609,43 @@
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
       }
+      .thread-attention-line {
+        font-size: 11px;
+        line-height: 1.45;
+        color: #fde68a;
+        background: rgba(250, 204, 21, 0.08);
+        border: 1px solid rgba(250, 204, 21, 0.18);
+        border-radius: 8px;
+        padding: 6px 8px;
+      }
+      .thread-attention-line.failed {
+        color: #fca5a5;
+        background: rgba(248, 113, 113, 0.08);
+        border-color: rgba(248, 113, 113, 0.18);
+      }
+      .thread-alert {
+        margin-top: 8px;
+        font-size: 12px;
+        line-height: 1.5;
+        border-radius: 10px;
+        padding: 8px 10px;
+        background: rgba(250, 204, 21, 0.08);
+        border: 1px solid rgba(250, 204, 21, 0.18);
+        color: #fde68a;
+      }
+      .thread-alert.failed {
+        background: rgba(248, 113, 113, 0.08);
+        border-color: rgba(248, 113, 113, 0.18);
+        color: #fca5a5;
+      }
+      .thread-alert.running {
+        background: rgba(96, 165, 250, 0.08);
+        border-color: rgba(96, 165, 250, 0.18);
+        color: #93c5fd;
+      }
+      .thread-alert[hidden] {
+        display: none;
+      }
       .thread-item-head {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
@@ -1331,6 +1368,7 @@
               <span class="state-badge unknown" id="threadStateBadge">unknown</span>
             </div>
             <div class="meta viewer-path" id="threadMeta"></div>
+            <div class="thread-alert" id="threadAlert" hidden></div>
           </div>
           <div class="toolbar viewer-actions">
             <button id="refresh">Refresh current thread</button>
@@ -1438,6 +1476,7 @@
       const stickyContextStateEl = document.getElementById('stickyContextState');
       const threadStateBadgeEl = document.getElementById('threadStateBadge');
       const threadMetaEl = document.getElementById('threadMeta');
+      const threadAlertEl = document.getElementById('threadAlert');
       const stickyContextTitleEl = document.getElementById('stickyContextTitle');
       const stickyContextMetaEl = document.getElementById('stickyContextMeta');
       const threadPanelTitleEl = document.getElementById('threadPanelTitle');
@@ -1657,6 +1696,11 @@
           attentionSectionApproval: 'Waiting approval',
           attentionSectionInput: 'Waiting input',
           attentionSectionOther: 'Other attention',
+          threadAlertFailed: 'Blocked by failure',
+          threadAlertApproval: 'Approval needed',
+          threadAlertInput: 'Reply needed',
+          threadAlertRunning: 'Live terminal attached',
+          threadAlertDefault: 'Why this thread matters now',
           noThreadSummary: 'No recent summary',
           attentionCollapse: 'Collapse',
           attentionExpand: 'Expand',
@@ -1876,6 +1920,11 @@
           attentionSectionApproval: '승인 대기',
           attentionSectionInput: '입력 대기',
           attentionSectionOther: '기타 attention',
+          threadAlertFailed: '실패로 막힘',
+          threadAlertApproval: '승인 필요',
+          threadAlertInput: '답변 필요',
+          threadAlertRunning: '라이브 터미널 연결됨',
+          threadAlertDefault: '지금 이 스레드를 봐야 하는 이유',
           noThreadSummary: '최근 요약 없음',
           attentionCollapse: '접기',
           attentionExpand: '펼치기',
@@ -2617,6 +2666,9 @@
           const threadState = lastActiveThread.state || 'unknown';
           threadStateBadgeEl.textContent = getStateLabel(threadState);
           threadStateBadgeEl.className = `state-badge ${getStateClass(threadState)}`;
+          renderThreadAlert(lastActiveThread);
+        } else {
+          renderThreadAlert(null);
         }
         if (lastThreads.length) {
           renderThreadList(lastThreads);
@@ -3131,8 +3183,9 @@
         stickyContextTitleEl.textContent = activeThread
           ? `${activeProject} · ${activeThread.title || t('untitledThread')}`
           : `${activeProject} · ${t('stickyWaitingThread')}`;
+        const attentionLine = getThreadAttentionLine(activeThread || {});
         stickyContextMetaEl.textContent = activeThread
-          ? `${activeThread.source || t('unknownSource')}${projectActivity}${attentionActivity}`
+          ? `${activeThread.source || t('unknownSource')}${projectActivity}${attentionActivity}${attentionLine ? ` · ${attentionLine}` : ''}`
           : t('stickyMetaEmpty', { activity: `${projectActivity}${attentionActivity}` });
         const state = activeThread?.state || 'unknown';
         stickyContextStateEl.textContent = getStateLabel(state);
@@ -3167,10 +3220,13 @@
           terminalStateCardEl.style.borderColor = 'rgba(34, 197, 94, 0.35)';
         } else {
           terminalStateHintEl.textContent = t('terminalTextOnly');
-          terminalStateMetaEl.textContent = selectedThreadId
+          const threadLine = getThreadAttentionLine(lastActiveThread || {});
+          terminalStateMetaEl.textContent = threadLine || (selectedThreadId
             ? t('terminalAutoEnable')
-            : t('selectThreadFirst');
-          terminalStateCardEl.style.borderColor = 'var(--line)';
+            : t('selectThreadFirst'));
+          terminalStateCardEl.style.borderColor = isAttentionThread(lastActiveThread || {})
+            ? 'rgba(250, 204, 21, 0.28)'
+            : 'var(--line)';
         }
       }
 
@@ -3356,6 +3412,45 @@
           return rawSummary;
         }
         return `${prefix}: ${rawSummary}`;
+      }
+
+      function getThreadAlertLabel(thread = {}) {
+        switch (thread.state) {
+          case 'failed':
+            return t('threadAlertFailed');
+          case 'waiting_approval':
+            return t('threadAlertApproval');
+          case 'waiting_input':
+            return t('threadAlertInput');
+          case 'running':
+            return t('threadAlertRunning');
+          default:
+            return t('threadAlertDefault');
+        }
+      }
+
+      function getThreadAttentionLine(thread = {}) {
+        const reason = String(thread.stateReason || '').trim();
+        const summary = String(thread.summary || '').trim();
+        const candidate = reason || summary;
+        if (!candidate) return '';
+        if (!isAttentionThread(thread) && !thread.terminalAvailable) return '';
+        return `${getThreadAlertLabel(thread)} · ${candidate}`;
+      }
+
+      function renderThreadAlert(thread = null) {
+        if (!threadAlertEl) return;
+        const line = getThreadAttentionLine(thread || {});
+        if (!line) {
+          threadAlertEl.hidden = true;
+          threadAlertEl.textContent = '';
+          threadAlertEl.className = 'thread-alert';
+          return;
+        }
+        const stateClass = getStateClass(thread?.state || 'unknown');
+        threadAlertEl.hidden = false;
+        threadAlertEl.textContent = line;
+        threadAlertEl.className = `thread-alert ${stateClass}`;
       }
 
       function summarizeBlock(text = '') {
@@ -3805,6 +3900,7 @@
         const stateClass = `state-${getStateClass(thread.state || 'unknown')}`;
         const changeBadge = hasNew ? (hasSeen ? t('changedBadge') : t('newBadge')) : '';
         const pinned = isThreadPinned(thread);
+        const attentionLine = getThreadAttentionLine(thread);
         return `
           <div class="thread-item-shell">
             <button class="thread-item ${stateClass} ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}" title="${escapeHtml(fullTitle)}\n${escapeHtml(fullPath)}">
@@ -3816,6 +3912,7 @@
                 </div>
               </div>
               <div class="thread-item-summary">${escapeHtml(summary)}</div>
+              ${attentionLine ? `<div class="thread-attention-line ${escapeHtml(getStateClass(thread.state || 'unknown'))}">${escapeHtml(attentionLine)}</div>` : ''}
               <div class="thread-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))}</div>
               <div class="thread-item-meta path" title="${escapeHtml(fullPath)}">${escapeHtml(compactPath)}</div>
               <div class="thread-item-meta">${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
@@ -3901,6 +3998,7 @@
         return `<div class="activity-timeline">${threads.map((thread, index) => {
           const active = thread.id === selectedThreadId || (!selectedThreadId && index === 0);
           const summary = getThreadReasonSummary(thread);
+          const attentionLine = getThreadAttentionLine(thread);
           return `
             <button class="activity-item ${active ? 'active' : ''}" data-thread-id="${escapeHtml(thread.id)}">
               <div class="activity-item-head">
@@ -3908,6 +4006,7 @@
                 ${renderStateBadgeMarkup(thread.state || 'unknown')}
               </div>
               <div class="activity-item-summary">${escapeHtml(summary)}</div>
+              ${attentionLine ? `<div class="thread-attention-line ${escapeHtml(getStateClass(thread.state || 'unknown'))}">${escapeHtml(attentionLine)}</div>` : ''}
               <div class="activity-item-meta">${escapeHtml(getProjectName(thread))} · ${escapeHtml(thread.source || t('unknownSource'))} · ${escapeHtml(t('updatedPrefix', { time: formatDateTime(thread.updatedAtMs) }))}</div>
             </button>
           `;
@@ -4060,6 +4159,7 @@
           threadStateBadgeEl.textContent = getStateLabel(threadState);
           threadStateBadgeEl.className = `state-badge ${getStateClass(threadState)}`;
           lastActiveThread = thread;
+          renderThreadAlert(thread);
           renderStickyContext(thread);
           const changed = thread.updatedAtMs && thread.updatedAtMs !== lastSessionUpdatedAt;
           lastSessionUpdatedAt = thread.updatedAtMs || lastSessionUpdatedAt;
@@ -4089,6 +4189,7 @@
           threadStateBadgeEl.textContent = getStateLabel('unknown');
           threadStateBadgeEl.className = `state-badge ${getStateClass('unknown')}`;
           lastActiveThread = null;
+          renderThreadAlert(null);
           updatePinnedThreadButton();
           activeThreadChangeBaseline = null;
           selectedThreadAccess = { canSendInput: !!authCapabilities?.canSendInput, canInterrupt: !!authCapabilities?.canInterrupt, canUseTerminalControl: !!authCapabilities?.canUseTerminalControl, actionRestricted: false };

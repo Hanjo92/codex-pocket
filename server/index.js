@@ -996,12 +996,14 @@ async function enrichThreadState(thread = {}) {
         blocks: transcript.blocks,
         state: state.type,
       }),
+      terminalInteraction,
     };
   } catch {
     return {
       ...thread,
       state: createNormalizedState('unknown', 'failed to read transcript'),
       summary: '',
+      terminalInteraction: getTerminalInteractionState(thread.id),
     };
   }
 }
@@ -1027,7 +1029,10 @@ function toPublicThread(thread = {}) {
     createdAtMs: thread.created_at_ms,
     threadSource: thread.thread_source || null,
     state: thread.state?.type || 'unknown',
+    stateReason: thread.state?.reason || '',
     summary: thread.summary || '',
+    terminalAvailable: !!thread.terminalInteraction?.available,
+    terminalUpdatedAt: thread.terminalInteraction?.updatedAt || null,
   };
 }
 
@@ -1102,6 +1107,9 @@ async function getSessionPayload(threadId, authState = null) {
       updatedAtMs: thread.updated_at_ms,
       createdAtMs: thread.created_at_ms,
       state: state.type,
+      stateReason: state.reason || '',
+      terminalAvailable: !!terminalInteraction?.available,
+      terminalUpdatedAt: terminalInteraction?.updatedAt || null,
     },
     threads: threads.map(toPublicThread),
     scope: {
