@@ -94,12 +94,17 @@ Shipped foundation so far:
   - optional per-user action-thread allowlist
   - visible-but-read-only session fallback outside that allowlist
 
-Remaining work in this area:
+Decision for this area:
 
-- decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model (#28)
-- if broader sharing is needed later, follow that decision with more explicit delegation/auth hardening work
-  - revocation flows and persistent session storage are already shipped in the current `1.3.0` foundation
-  - likely next questions are around stronger delegated-access constraints, audit/export needs, and safer onboarding/offboarding
+- `1.3.0` stops at **safer trusted internal sharing**, not a fuller delegation model
+- the current target remains: a low-noise browser surface that can be shared more safely across trusted devices / trusted people on private networks
+- broader reviewer/delegated access is explicitly deferred until there is a stronger real-world need
+
+What this means:
+
+- the current `1.3.0` foundation is considered sufficient for the intended internal-sharing baseline
+- revocation flows and persistent session storage are already shipped in that baseline
+- if broader sharing becomes important later, it should return as a new post-`1.3.0` product slice with clearer constraints around delegated-access limits, audit/export needs, and safer onboarding/offboarding
 
 Why it matters:
 

@@ -28,5 +28,5 @@
 
 ## Next implementation targets
 
-1. decide whether broader self-hosted exposure needs stronger auth controls such as session revocation, persistent session storage, or audit export/search
+1. improve deployment hardening guidance for broader self-hosted exposure boundaries, reverse proxies, and safer defaults
 2. deepen transcript modeling or host-level orchestration if broader oversight is needed
