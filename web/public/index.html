@@ -1482,6 +1482,13 @@
               </select>
             </div>
             <div>
+              <select id="threadSignalMode" aria-label="Thread signal filter">
+                <option value="all">All signal</option>
+                <option value="actionable">Actionable only</option>
+                <option value="informational">Informational only</option>
+              </select>
+            </div>
+            <div>
               <select id="threadFocusMode" aria-label="Thread focus filter">
                 <option value="all">All focus</option>
                 <option value="unread">Unread only</option>
@@ -1660,6 +1667,7 @@
       const attentionDigestDismissBtn = document.getElementById('attentionDigestDismiss');
       const threadSummaryEl = document.getElementById('threadSummary');
       const threadViewModeEl = document.getElementById('threadViewMode');
+      const threadSignalModeEl = document.getElementById('threadSignalMode');
       const threadFocusModeEl = document.getElementById('threadFocusMode');
       const threadSortEl = document.getElementById('threadSort');
       const projectSortEl = document.getElementById('projectSort');
@@ -1733,6 +1741,10 @@
           threadViewModeAttention: 'Needs attention',
           threadViewModeActivity: 'Recent activity',
           threadViewModeProjects: 'Project groups',
+          threadSignalModeAria: 'Thread signal filter',
+          threadSignalAll: 'All signal',
+          threadSignalActionable: 'Actionable only',
+          threadSignalInformational: 'Informational only',
           threadFocusModeAria: 'Thread focus filter',
           threadFocusAll: 'All focus',
           threadFocusUnread: 'Unread only',
@@ -2010,6 +2022,10 @@
           threadViewModeAttention: 'attention 필요',
           threadViewModeActivity: '최근 activity',
           threadViewModeProjects: '프로젝트별 묶음',
+          threadSignalModeAria: '신호 강도 필터',
+          threadSignalAll: '전체 신호',
+          threadSignalActionable: '바로 볼 것만',
+          threadSignalInformational: '정보성 업데이트만',
           threadFocusModeAria: '스레드 집중 필터',
           threadFocusAll: '전체 focus',
           threadFocusUnread: '안 읽은 것만',
@@ -2293,6 +2309,7 @@
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
       let threadQuery = localStorage.getItem('codex-pocket:thread-query') || '';
       let threadViewMode = localStorage.getItem('codex-pocket:thread-view-mode') || 'all';
+      let threadSignalMode = localStorage.getItem('codex-pocket:thread-signal-mode') || 'all';
       let threadFocusMode = localStorage.getItem('codex-pocket:thread-focus-mode') || 'all';
       let threadSort = localStorage.getItem('codex-pocket:thread-sort') || 'updated-desc';
       let availableHosts = [];
@@ -2413,6 +2430,14 @@
           'cwd-asc': t('threadSortProjectAsc'),
           attention: t('threadSortAttention'),
         })[value] || t('threadSortUpdatedDesc');
+      }
+
+      function getThreadSignalLabel(value = threadSignalMode) {
+        return ({
+          all: t('threadSignalAll'),
+          actionable: t('threadSignalActionable'),
+          informational: t('threadSignalInformational'),
+        })[value] || t('threadSignalAll');
       }
 
       function getThreadFocusLabel(value = threadFocusMode) {
@@ -3090,6 +3115,10 @@
         threadViewModeEl.options[1].textContent = t('threadViewModeAttention');
         threadViewModeEl.options[2].textContent = t('threadViewModeActivity');
         threadViewModeEl.options[3].textContent = t('threadViewModeProjects');
+        threadSignalModeEl.setAttribute('aria-label', t('threadSignalModeAria'));
+        threadSignalModeEl.options[0].textContent = t('threadSignalAll');
+        threadSignalModeEl.options[1].textContent = t('threadSignalActionable');
+        threadSignalModeEl.options[2].textContent = t('threadSignalInformational');
         threadFocusModeEl.setAttribute('aria-label', t('threadFocusModeAria'));
         threadFocusModeEl.options[0].textContent = t('threadFocusAll');
         threadFocusModeEl.options[1].textContent = t('threadFocusUnread');
@@ -3332,6 +3361,23 @@
         return ['failed', 'waiting_approval', 'waiting_input'].includes(thread.state);
       }
 
+      function hasUnseenStateTransition(thread = {}) {
+        if (!thread?.id || !isThreadNew(thread)) return false;
+        const snapshot = getThreadSnapshot(thread.id);
+        if (!snapshot) return false;
+        const previousState = String(snapshot.state || 'unknown');
+        const nextState = String(thread.state || 'unknown');
+        return previousState !== nextState && Number(thread.updatedAtMs || 0) > Number(snapshot.updatedAtMs || 0);
+      }
+
+      function isActionableThreadActivity(thread = {}) {
+        return isAttentionThread(thread) || hasUnseenStateTransition(thread);
+      }
+
+      function isInformationalThreadActivity(thread = {}) {
+        return !isActionableThreadActivity(thread);
+      }
+
       function getProjectStats(threads = []) {
         const map = new Map();
         for (const thread of threads) {
@@ -3461,7 +3507,12 @@
         const filteredByMode = threadViewMode === 'attention'
           ? filteredByProject.filter((thread) => isAttentionThread(thread))
           : filteredByProject;
-        const filteredByFocus = filteredByMode.filter((thread) => {
+        const filteredBySignal = filteredByMode.filter((thread) => {
+          if (threadSignalMode === 'actionable') return isActionableThreadActivity(thread);
+          if (threadSignalMode === 'informational') return isInformationalThreadActivity(thread);
+          return true;
+        });
+        const filteredByFocus = filteredBySignal.filter((thread) => {
           switch (threadFocusMode) {
             case 'unread':
               return isThreadNew(thread);
@@ -3729,9 +3780,18 @@
       function setThreadViewMode(value) {
         threadViewMode = ['attention', 'activity', 'projects'].includes(value) ? value : 'all';
         localStorage.setItem('codex-pocket:thread-view-mode', threadViewMode);
+        if (threadViewMode === 'attention' && threadSignalMode === 'informational') {
+          setThreadSignalMode('all');
+          if (threadSignalModeEl) threadSignalModeEl.value = threadSignalMode;
+        }
         if (threadViewMode === 'attention' && threadSort === 'updated-desc') {
           setThreadSort('attention');
         }
+      }
+
+      function setThreadSignalMode(value) {
+        threadSignalMode = ['actionable', 'informational'].includes(value) ? value : 'all';
+        localStorage.setItem('codex-pocket:thread-signal-mode', threadSignalMode);
       }
 
       function setThreadFocusMode(value) {
@@ -3867,6 +3927,9 @@
           `<span class="chip">${escapeHtml(t('attentionChip', { count: attentionCount }))}</span>`,
           `<span class="chip">${escapeHtml(t('pinnedChip', { count: pinnedCount }))}</span>`,
         ];
+        if (threadSignalMode !== 'all') {
+          items.push(`<span class="chip">${escapeHtml(getThreadSignalLabel(threadSignalMode))}</span>`);
+        }
         if (threadFocusMode !== 'all') {
           items.push(`<span class="chip">${escapeHtml(getThreadFocusLabel(threadFocusMode))}</span>`);
         }
@@ -4951,8 +5014,12 @@
       }
 
       async function boot() {
+        if (threadViewMode === 'attention' && threadSignalMode === 'informational') {
+          setThreadSignalMode('all');
+        }
         threadSearchEl.value = threadQuery;
         threadViewModeEl.value = threadViewMode;
+        threadSignalModeEl.value = threadSignalMode;
         threadFocusModeEl.value = threadFocusMode;
         threadSortEl.value = threadSort;
         projectSortEl.value = projectSort;
@@ -4996,6 +5063,18 @@
 
       threadViewModeEl.addEventListener('change', async (event) => {
         setThreadViewMode(event.target.value);
+        renderThreadList(lastThreads);
+        const filteredThreads = getFilteredThreads(lastThreads);
+        const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
+        if (nextThreadId && nextThreadId !== selectedThreadId) {
+          setSelectedThread(nextThreadId);
+          renderThreadList(lastThreads);
+          await loadSession();
+        }
+      });
+
+      threadSignalModeEl.addEventListener('change', async (event) => {
+        setThreadSignalMode(event.target.value);
         renderThreadList(lastThreads);
         const filteredThreads = getFilteredThreads(lastThreads);
         const nextThreadId = chooseThreadForCurrentProject(filteredThreads);
