@@ -37,6 +37,15 @@ Planned work:
 - filters for actionable vs informational activity
 - stronger project-level rollups
 
+Tracked work:
+
+- shipped:
+  - #1 thread/session state classification
+  - #2 inbox/attention view
+- remaining:
+  - #26 actionable vs informational filters
+  - #27 stronger project-level rollups
+
 Why it matters:
 
 The official remote experience can handle direct control. `codex-pocket` should help users scan many threads quickly and decide where to jump in.
@@ -87,8 +96,10 @@ Shipped foundation so far:
 
 Remaining work in this area:
 
-- decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model
-- if broader sharing is needed later, add stronger auth controls beyond the current internal-use baseline (for example revocation flows, persistent session storage, or stricter audit/export needs)
+- decide whether `1.3.0` stops at safe internal sharing or grows into a fuller delegation model (#28)
+- if broader sharing is needed later, follow that decision with more explicit delegation/auth hardening work
+  - revocation flows and persistent session storage are already shipped in the current `1.3.0` foundation
+  - likely next questions are around stronger delegated-access constraints, audit/export needs, and safer onboarding/offboarding
 
 Why it matters:
 
@@ -98,7 +109,7 @@ A lighter browser surface becomes more useful when it can be safely shared witho
 
 Possible follow-ons:
 
-- stronger deployment hardening guidance beyond the current internal-sharing checklist/origin guard baseline
+- #29 stronger deployment hardening guidance beyond the current internal-sharing checklist/origin guard baseline
 
 ## Current product lens
 
