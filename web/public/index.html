@@ -935,8 +935,23 @@
       }
       .permission-activity-item {
         display: grid;
-        gap: 3px;
+        gap: 6px;
         font-size: 12px;
+        padding: 8px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+      .permission-activity-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .permission-activity-head-main {
+        min-width: 0;
+        display: grid;
+        gap: 4px;
       }
       .permission-activity-line {
         color: var(--text);
@@ -951,6 +966,57 @@
       }
       .permission-activity-empty {
         color: var(--muted);
+        font-size: 11px;
+      }
+      .permission-session-status {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 1.2;
+        border: 1px solid transparent;
+        white-space: nowrap;
+      }
+      .permission-session-status.active {
+        background: rgba(34, 197, 94, 0.14);
+        color: #86efac;
+      }
+      .permission-session-status.revoked {
+        background: rgba(248, 113, 113, 0.14);
+        color: #fca5a5;
+      }
+      .permission-session-status.expired {
+        background: rgba(148, 163, 184, 0.16);
+        color: #cbd5e1;
+      }
+      .permission-session-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .permission-session-actions button {
+        width: auto;
+        min-height: 34px;
+        padding: 8px 10px;
+        font-size: 11px;
+      }
+      .permission-session-actions button.secondary.danger {
+        border-color: rgba(248, 113, 113, 0.28);
+        color: #fecaca;
+      }
+      .permission-activity-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .permission-activity-toolbar button {
+        width: auto;
+        min-height: 34px;
+        padding: 8px 10px;
         font-size: 11px;
       }
       .permission-user-row {
@@ -1312,6 +1378,10 @@
           align-items: stretch;
         }
         button {
+          width: 100%;
+        }
+        .permission-session-actions button,
+        .permission-activity-toolbar button {
           width: 100%;
         }
         .thread-item {
@@ -1738,6 +1808,22 @@
           permissionActivityTtl: 'TTL {hours}h',
           permissionActivitySessionLine: '{username} · last seen {time}',
           permissionActivitySessionMeta: 'created {created} · expires {expires} · {ip}',
+          permissionActivitySessionRevokedMeta: 'created {created} · revoked {revoked} · {ip}',
+          permissionActivitySessionExpiredMeta: 'created {created} · expired {expires} · {ip}',
+          permissionActivitySessionStatusActive: 'Active',
+          permissionActivitySessionStatusRevoked: 'Revoked',
+          permissionActivitySessionStatusExpired: 'Expired',
+          permissionActivityRevokeSession: 'Revoke session',
+          permissionActivityRevokeUser: 'Revoke user sessions',
+          permissionActivityRevokeOthers: 'Sign out other sessions',
+          permissionActivityRevoking: 'Revoking…',
+          permissionActivityRevokeConfirmSession: 'Revoke this browser session now?',
+          permissionActivityRevokeConfirmUser: 'Revoke all sessions for {username}?',
+          permissionActivityRevokeConfirmOthers: 'Sign out every other revocable browser session now?',
+          permissionActivityRevokeSuccessSession: 'Revoked 1 session.',
+          permissionActivityRevokeSuccessUser: 'Revoked {count} session(s) for {username}.',
+          permissionActivityRevokeSuccessOthers: 'Signed out {count} other session(s).',
+          permissionActivitySessionRevoked: '{actor} revoked session access',
           permissionActivityLoginSuccess: '{username} signed in',
           permissionActivityLoginFailed: 'Failed sign-in for {username}',
           permissionActivityLogout: '{username} signed out',
@@ -1991,6 +2077,22 @@
           permissionActivityTtl: 'TTL {hours}시간',
           permissionActivitySessionLine: '{username} · 마지막 확인 {time}',
           permissionActivitySessionMeta: '생성 {created} · 만료 {expires} · {ip}',
+          permissionActivitySessionRevokedMeta: '생성 {created} · 회수 {revoked} · {ip}',
+          permissionActivitySessionExpiredMeta: '생성 {created} · 만료 {expires} · {ip}',
+          permissionActivitySessionStatusActive: '활성',
+          permissionActivitySessionStatusRevoked: '회수됨',
+          permissionActivitySessionStatusExpired: '만료',
+          permissionActivityRevokeSession: '세션 회수',
+          permissionActivityRevokeUser: '이 사용자 세션 전부 회수',
+          permissionActivityRevokeOthers: '다른 세션 로그아웃',
+          permissionActivityRevoking: '회수하는 중…',
+          permissionActivityRevokeConfirmSession: '이 브라우저 세션을 지금 회수할까?',
+          permissionActivityRevokeConfirmUser: '{username}의 세션을 전부 회수할까?',
+          permissionActivityRevokeConfirmOthers: '지금 다른 회수 가능한 브라우저 세션을 전부 로그아웃할까?',
+          permissionActivityRevokeSuccessSession: '세션 1개를 회수했어.',
+          permissionActivityRevokeSuccessUser: '{username}의 세션 {count}개를 회수했어.',
+          permissionActivityRevokeSuccessOthers: '다른 세션 {count}개를 로그아웃했어.',
+          permissionActivitySessionRevoked: '{actor}가 세션 접근을 회수했어',
           permissionActivityLoginSuccess: '{username} 계정이 로그인했어',
           permissionActivityLoginFailed: '{username} 계정 로그인 실패',
           permissionActivityLogout: '{username} 계정이 로그아웃했어',
@@ -2159,6 +2261,7 @@
       let permissionManagerScopeOptions = { projects: [] };
       let permissionManagerAuthActivity = { sessions: [], events: [], sessionTtlSeconds: 0 };
       let permissionManagerBusyUser = '';
+      let permissionManagerBusySessionAction = '';
       let permissionManagerFeedback = null;
       let permissionManagerFeedbackTimer = null;
       let selectedThreadId = localStorage.getItem('codex-pocket:selected-thread') || '';
@@ -2532,10 +2635,70 @@
         if (event.type === 'login_failed') return t('permissionActivityLoginFailed', { username });
         if (event.type === 'logout') return t('permissionActivityLogout', { username });
         if (event.type === 'session_invalidated') return t('permissionActivitySessionInvalidated', { username });
+        if (event.type === 'session_revoked') return t('permissionActivitySessionRevoked', { actor });
         if (event.type === 'user_permission_updated') return t('permissionActivityPermissionUpdated', { actor, username, after: getPermissionLabel(event.after || 'control') });
         if (event.type === 'user_role_updated') return t('permissionActivityRoleUpdated', { actor, username, after: getRoleLabel(event.after || 'member') });
         if (event.type === 'user_scope_updated') return t('permissionActivityScopeUpdated', { actor, username });
         return t('permissionActivityUnknown');
+      }
+
+      function getSessionStatusLabel(status = 'active') {
+        if (status === 'revoked') return t('permissionActivitySessionStatusRevoked');
+        if (status === 'expired') return t('permissionActivitySessionStatusExpired');
+        return t('permissionActivitySessionStatusActive');
+      }
+
+      function getSessionMetaLabel(session = {}) {
+        const ip = session.ip || 'unknown';
+        if (session.status === 'revoked') {
+          return t('permissionActivitySessionRevokedMeta', {
+            created: formatDateTime(session.createdAt),
+            revoked: formatDateTime(session.revokedAt || session.endedAt || session.expiresAt),
+            ip,
+          });
+        }
+        if (session.status === 'expired') {
+          return t('permissionActivitySessionExpiredMeta', {
+            created: formatDateTime(session.createdAt),
+            expires: formatDateTime(session.expiresAt),
+            ip,
+          });
+        }
+        return t('permissionActivitySessionMeta', {
+          created: formatDateTime(session.createdAt),
+          expires: formatDateTime(session.expiresAt),
+          ip,
+        });
+      }
+
+      function getSessionBusyKey(mode = '', value = '') {
+        return `${mode}:${value}`;
+      }
+
+      async function revokeSessionAction(mode = '', payload = {}, feedbackMessage = '') {
+        permissionManagerBusySessionAction = getSessionBusyKey(mode, payload.sessionId || payload.username || 'others');
+        renderPermissionManagerActivity();
+        try {
+          const response = await apiFetch('/api/auth/sessions/revoke', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ mode, ...payload }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            throw new Error(data.error || 'Session revoke failed');
+          }
+          permissionManagerBusySessionAction = '';
+          const message = typeof feedbackMessage === 'function'
+            ? feedbackMessage(data)
+            : (feedbackMessage || t('permissionActivityRevokeSuccessSession'));
+          setPermissionManagerFeedback('success', message);
+          await loadPermissionManager();
+        } catch (error) {
+          permissionManagerBusySessionAction = '';
+          renderPermissionManagerActivity();
+          setPermissionManagerFeedback('error', t('permissionManagerSaveFailed', { message: error.message }), 4200);
+        }
       }
 
       function renderPermissionManagerActivity() {
@@ -2546,14 +2709,33 @@
         permissionManagerActivityEl.innerHTML = `
           <div class="permission-activity-grid">
             <div class="permission-activity-card">
-              <div class="permission-activity-title">${escapeHtml(t('permissionActivitySessionsTitle'))} · ${escapeHtml(t('permissionActivityTtl', { hours: ttlHours }))}</div>
+              <div class="permission-activity-head">
+                <div class="permission-activity-title">${escapeHtml(t('permissionActivitySessionsTitle'))} · ${escapeHtml(t('permissionActivityTtl', { hours: ttlHours }))}</div>
+                <div class="permission-activity-toolbar">
+                  <button type="button" class="secondary danger" data-session-revoke-others ${permissionManagerBusySessionAction === 'others:others' ? 'disabled' : ''}>${escapeHtml(permissionManagerBusySessionAction === 'others:others' ? t('permissionActivityRevoking') : t('permissionActivityRevokeOthers'))}</button>
+                </div>
+              </div>
               <div class="permission-activity-list">
-                ${sessions.length ? sessions.slice(0, 6).map((session) => `
-                  <div class="permission-activity-item">
-                    <div class="permission-activity-line">${escapeHtml(t('permissionActivitySessionLine', { username: session.username || 'unknown', time: formatDateTime(session.lastSeenAt) }))}${session.current ? ` · ${escapeHtml(t('permissionActivityCurrentSession'))}` : ''}</div>
-                    <div class="permission-activity-meta">${escapeHtml(t('permissionActivitySessionMeta', { created: formatDateTime(session.createdAt), expires: formatDateTime(session.expiresAt), ip: session.ip || 'unknown' }))}</div>
-                  </div>
-                `).join('') : `<div class="permission-activity-empty">${escapeHtml(t('permissionActivityEmptySessions'))}</div>`}
+                ${sessions.length ? sessions.map((session) => {
+                  const busySession = permissionManagerBusySessionAction === getSessionBusyKey('session', session.sessionId);
+                  const busyUser = permissionManagerBusySessionAction === getSessionBusyKey('user', session.username || '');
+                  const canRevoke = session.status === 'active';
+                  return `
+                    <div class="permission-activity-item">
+                      <div class="permission-activity-head">
+                        <div class="permission-activity-head-main">
+                          <div class="permission-activity-line">${escapeHtml(t('permissionActivitySessionLine', { username: session.username || 'unknown', time: formatDateTime(session.lastSeenAt) }))}${session.current ? ` · ${escapeHtml(t('permissionActivityCurrentSession'))}` : ''}</div>
+                          <div class="permission-activity-meta">${escapeHtml(getSessionMetaLabel(session))}</div>
+                        </div>
+                        <span class="permission-session-status ${escapeHtml(session.status || 'active')}">${escapeHtml(getSessionStatusLabel(session.status || 'active'))}</span>
+                      </div>
+                      <div class="permission-session-actions">
+                        <button type="button" class="secondary danger" data-session-revoke="${escapeHtml(session.sessionId)}" ${!canRevoke || busySession || busyUser ? 'disabled' : ''}>${escapeHtml(busySession ? t('permissionActivityRevoking') : t('permissionActivityRevokeSession'))}</button>
+                        <button type="button" class="secondary" data-session-revoke-user="${escapeHtml(session.username || '')}" ${!canRevoke || busySession || busyUser ? 'disabled' : ''}>${escapeHtml(busyUser ? t('permissionActivityRevoking') : t('permissionActivityRevokeUser'))}</button>
+                      </div>
+                    </div>
+                  `;
+                }).join('') : `<div class="permission-activity-empty">${escapeHtml(t('permissionActivityEmptySessions'))}</div>`}
               </div>
             </div>
             <div class="permission-activity-card">
@@ -2569,6 +2751,34 @@
             </div>
           </div>
         `;
+
+        for (const button of permissionManagerActivityEl.querySelectorAll('[data-session-revoke]')) {
+          button.addEventListener('click', async () => {
+            const sessionId = button.dataset.sessionRevoke || '';
+            if (!sessionId) return;
+            if (!confirm(t('permissionActivityRevokeConfirmSession'))) return;
+            const session = sessions.find((entry) => entry.sessionId === sessionId);
+            const confirmSelf = !!session?.current;
+            await revokeSessionAction('session', { sessionId, confirmSelf }, () => t('permissionActivityRevokeSuccessSession'));
+          });
+        }
+
+        for (const button of permissionManagerActivityEl.querySelectorAll('[data-session-revoke-user]')) {
+          button.addEventListener('click', async () => {
+            const username = button.dataset.sessionRevokeUser || '';
+            if (!username) return;
+            if (!confirm(t('permissionActivityRevokeConfirmUser', { username }))) return;
+            const includeCurrent = username === authenticatedUsername;
+            await revokeSessionAction('user', { username, includeCurrent, confirmSelf: includeCurrent }, (data) => t('permissionActivityRevokeSuccessUser', { username, count: Array.isArray(data?.revoked) ? data.revoked.length : 0 }));
+          });
+        }
+
+        for (const button of permissionManagerActivityEl.querySelectorAll('[data-session-revoke-others]')) {
+          button.addEventListener('click', async () => {
+            if (!confirm(t('permissionActivityRevokeConfirmOthers'))) return;
+            await revokeSessionAction('others', {}, (data) => t('permissionActivityRevokeSuccessOthers', { count: Array.isArray(data?.revoked) ? data.revoked.length : 0 }));
+          });
+        }
       }
 
       function renderPermissionManager() {

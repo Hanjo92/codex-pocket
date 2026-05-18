@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { timingSafeEqual, randomBytes, scryptSync } from 'node:crypto';
-import { appendFile, readFile, stat, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,7 @@ const runDir = path.resolve(__dirname, '../run');
 const usersPath = path.join(runDir, 'users.json');
 const accountsPath = path.join(runDir, 'accounts.json');
 const authAuditLogPath = path.join(runDir, 'auth-audit.jsonl');
+const authSessionsPath = path.join(runDir, 'auth-sessions.json');
 const port = Number(process.env.PORT || 4782);
 const host = process.env.HOST || process.env.CODEX_POCKET_HOST || '127.0.0.1';
 const codexHome = process.env.CODEX_HOME || path.join(process.env.HOME || '', '.codex');
@@ -24,6 +25,7 @@ const inputMaxBytes = Number(process.env.CODEX_POCKET_INPUT_MAX_BYTES || 16 * 10
 const sessionEventPollMs = Number(process.env.CODEX_POCKET_SESSION_EVENT_POLL_MS || 1500);
 const sessionTtlSeconds = Number(process.env.CODEX_POCKET_SESSION_TTL_SECONDS || 60 * 60 * 24 * 30);
 const authAuditMaxEntries = Number(process.env.CODEX_POCKET_AUTH_AUDIT_MAX_ENTRIES || 80);
+const authSessionRetention = Number(process.env.CODEX_POCKET_AUTH_SESSION_RETENTION || 200);
 const sessionCookieName = 'codex-pocket-session';
 const DEFAULT_PERMISSION_MODE = 'control';
 const DEFAULT_USER_ROLE = 'member';
@@ -36,6 +38,7 @@ const forceSecureCookies = String(process.env.CODEX_POCKET_FORCE_SECURE_COOKIES 
 let managedAppServerChild = null;
 const sessionEventSubscribers = new Map();
 const authSessions = new Map();
+let authSessionsFlushTimer = null;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -331,16 +334,148 @@ async function readAuthAuditLog(limit = authAuditMaxEntries) {
   }
 }
 
+function normalizeStoredSession(sessionId, session = {}) {
+  const createdAt = Number(session.createdAt || 0) || Date.now();
+  const lastSeenAt = Number(session.lastSeenAt || 0) || createdAt;
+  const expiresAt = Number(session.expiresAt || 0) || (lastSeenAt + (sessionTtlSeconds * 1000));
+  const revokedAt = Number(session.revokedAt || 0) || null;
+  const revokedReason = revokedAt ? String(session.revokedReason || 'revoked') : null;
+  const endedAt = Number(session.endedAt || 0) || revokedAt || null;
+  const status = revokedAt
+    ? 'revoked'
+    : expiresAt <= Date.now()
+      ? 'expired'
+      : 'active';
+  return {
+    sessionId,
+    username: String(session.username || '').trim(),
+    createdAt,
+    lastSeenAt,
+    expiresAt,
+    lastSeenIp: String(session.lastSeenIp || ''),
+    userAgent: String(session.userAgent || ''),
+    label: String(session.label || '').trim(),
+    revokedAt,
+    revokedReason,
+    revokedBy: String(session.revokedBy || '').trim(),
+    endedAt,
+    status,
+  };
+}
+
+function sortSessionsForStorage(sessions = []) {
+  return [...sessions].sort((a, b) => {
+    const aActive = a.status === 'active' ? 1 : 0;
+    const bActive = b.status === 'active' ? 1 : 0;
+    if (aActive !== bActive) return bActive - aActive;
+    return Number(b.lastSeenAt || b.createdAt || 0) - Number(a.lastSeenAt || a.createdAt || 0);
+  });
+}
+
+function pruneStoredSessions() {
+  const activeEntries = [];
+  const inactiveEntries = [];
+  for (const [sessionId, session] of authSessions.entries()) {
+    const normalized = normalizeStoredSession(sessionId, session);
+    if (normalized.status === 'active') activeEntries.push([sessionId, normalized]);
+    else inactiveEntries.push([sessionId, normalized]);
+  }
+  const retainedInactive = sortSessionsForStorage(inactiveEntries.map(([, session]) => session))
+    .slice(0, Math.max(0, authSessionRetention));
+  authSessions.clear();
+  for (const [sessionId, session] of activeEntries) authSessions.set(sessionId, normalizeStoredSession(sessionId, session));
+  for (const session of retainedInactive) authSessions.set(session.sessionId, session);
+}
+
+async function flushAuthSessions() {
+  authSessionsFlushTimer = null;
+  pruneStoredSessions();
+  const payload = {
+    sessions: sortSessionsForStorage([...authSessions.entries()].map(([sessionId, session]) => normalizeStoredSession(sessionId, session))),
+  };
+  await mkdir(runDir, { recursive: true });
+  await writeFile(authSessionsPath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+function scheduleAuthSessionsFlush() {
+  if (authSessionsFlushTimer) return;
+  authSessionsFlushTimer = setTimeout(() => {
+    flushAuthSessions().catch((error) => {
+      console.error('[codex-pocket] failed to persist auth sessions:', error.message);
+    });
+  }, 150);
+  authSessionsFlushTimer.unref?.();
+}
+
+async function loadAuthSessions() {
+  try {
+    const raw = await readFile(authSessionsPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    authSessions.clear();
+    const sessions = Array.isArray(parsed?.sessions) ? parsed.sessions : [];
+    for (const entry of sessions) {
+      const sessionId = String(entry?.sessionId || '').trim();
+      if (!sessionId) continue;
+      authSessions.set(sessionId, normalizeStoredSession(sessionId, entry));
+    }
+    pruneStoredSessions();
+  } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+}
+
+function revokeSessionRecord(sessionId, reason = 'revoked', details = {}) {
+  const existing = authSessions.get(sessionId);
+  if (!existing) return null;
+  const now = Date.now();
+  const next = normalizeStoredSession(sessionId, {
+    ...existing,
+    revokedAt: existing.revokedAt || now,
+    revokedReason: reason,
+    revokedBy: details.revokedBy || existing.revokedBy || '',
+    endedAt: existing.endedAt || now,
+  });
+  authSessions.set(sessionId, next);
+  scheduleAuthSessionsFlush();
+  return next;
+}
+
+function getStoredSession(sessionId = '') {
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId) return null;
+  const session = authSessions.get(normalizedSessionId);
+  if (!session) return null;
+  return normalizeStoredSession(normalizedSessionId, session);
+}
+
+function revokeSessionsByFilter(predicate, reason = 'revoked', details = {}) {
+  const revoked = [];
+  for (const [sessionId, session] of authSessions.entries()) {
+    const normalized = normalizeStoredSession(sessionId, session);
+    if (!predicate(normalized)) continue;
+    const next = revokeSessionRecord(sessionId, reason, details);
+    if (next) revoked.push(next);
+  }
+  return revoked;
+}
+
 function toPublicSession(sessionId, session = {}, currentSessionId = '') {
+  const normalized = normalizeStoredSession(sessionId, session);
   return {
     sessionId,
     current: !!currentSessionId && sessionId === currentSessionId,
-    username: session.username || '',
-    createdAt: session.createdAt || null,
-    lastSeenAt: session.lastSeenAt || null,
-    expiresAt: session.expiresAt || null,
-    ip: session.lastSeenIp || '',
-    userAgent: session.userAgent || '',
+    username: normalized.username,
+    createdAt: normalized.createdAt,
+    lastSeenAt: normalized.lastSeenAt,
+    expiresAt: normalized.expiresAt,
+    endedAt: normalized.endedAt,
+    revokedAt: normalized.revokedAt,
+    revokedReason: normalized.revokedReason,
+    status: normalized.status,
+    label: normalized.label,
+    ip: normalized.lastSeenIp,
+    userAgent: normalized.userAgent,
   };
 }
 
@@ -353,14 +488,15 @@ function listPublicSessions(currentSessionId = '') {
 function createSession(username, req) {
   const now = Date.now();
   const sessionId = randomBytes(24).toString('hex');
-  authSessions.set(sessionId, {
+  authSessions.set(sessionId, normalizeStoredSession(sessionId, {
     username,
     createdAt: now,
     lastSeenAt: now,
     lastSeenIp: getClientIp(req),
     userAgent: getUserAgent(req),
     expiresAt: now + (sessionTtlSeconds * 1000),
-  });
+  }));
+  scheduleAuthSessionsFlush();
   return sessionId;
 }
 
@@ -368,16 +504,28 @@ function getSession(req) {
   const cookies = parseCookies(req.headers.cookie || '');
   const sessionId = String(cookies[sessionCookieName] || '').trim();
   if (!sessionId) return null;
-  const session = authSessions.get(sessionId);
-  if (!session) return null;
+  const existing = authSessions.get(sessionId);
+  if (!existing) return null;
+  const session = normalizeStoredSession(sessionId, existing);
+  if (session.revokedAt) return null;
   if (session.expiresAt <= Date.now()) {
-    authSessions.delete(sessionId);
+    authSessions.set(sessionId, normalizeStoredSession(sessionId, {
+      ...session,
+      endedAt: session.endedAt || Date.now(),
+    }));
+    scheduleAuthSessionsFlush();
     return null;
   }
+  const previousLastSeenAt = Number(session.lastSeenAt || 0);
   session.lastSeenAt = Date.now();
   session.lastSeenIp = getClientIp(req);
   if (!session.userAgent) session.userAgent = getUserAgent(req);
   session.expiresAt = Date.now() + (sessionTtlSeconds * 1000);
+  session.status = 'active';
+  authSessions.set(sessionId, session);
+  if (!previousLastSeenAt || (session.lastSeenAt - previousLastSeenAt) >= 30_000) {
+    scheduleAuthSessionsFlush();
+  }
   return { sessionId, ...session };
 }
 
@@ -394,7 +542,7 @@ async function getAuthState(req) {
   }
   const user = findUserByUsername(users, session.username);
   if (!user) {
-    authSessions.delete(session.sessionId);
+    revokeSessionRecord(session.sessionId, 'user_missing', { revokedBy: 'system' });
     await recordAuthAudit('session_invalidated', {
       username: session.username,
       sessionId: session.sessionId,
@@ -1411,6 +1559,8 @@ function sendJson(res, statusCode, payload, headers = {}) {
   res.end(JSON.stringify(payload));
 }
 
+await loadAuthSessions();
+
 const server = http.createServer(async (req, res) => {
   if (!req.url) {
     res.writeHead(400);
@@ -1435,7 +1585,7 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/auth/session') {
     const state = await getAuthState(req);
-    const session = getSession(req);
+    const session = state.authenticated ? getSession(req) : null;
     sendJson(res, 200, {
       authenticated: state.authenticated,
       authRequired: state.authRequired,
@@ -1515,7 +1665,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/auth/logout' && req.method === 'POST') {
     const session = getSession(req);
     if (session?.sessionId) {
-      authSessions.delete(session.sessionId);
+      revokeSessionRecord(session.sessionId, 'logout', { revokedBy: session.username || 'self' });
       await recordAuthAudit('logout', {
         username: session.username,
         sessionId: session.sessionId,
@@ -1640,6 +1790,132 @@ const server = http.createServer(async (req, res) => {
         events,
         sessionTtlSeconds,
       });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/auth/sessions' && req.method === 'GET') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      sendJson(res, 200, {
+        sessions: listPublicSessions(authState?.sessionId || ''),
+        sessionTtlSeconds,
+      });
+    } catch (error) {
+      sendJson(res, error.statusCode || 500, {
+        error: error.message,
+        details: error.details || null,
+      });
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/auth/sessions/revoke' && req.method === 'POST') {
+    try {
+      if (!requireCapability(res, authState, 'canManageUsers')) return;
+      const body = await readJsonBody(req);
+      const actor = authState?.username || 'owner';
+      const targetSessionId = String(body.sessionId || '').trim();
+      const username = String(body.username || '').trim();
+      const mode = String(body.mode || (targetSessionId ? 'session' : username ? 'user' : '')).trim();
+      const includeCurrent = body.includeCurrent === true;
+      const confirmSelf = body.confirmSelf === true;
+      const users = await loadUsers();
+
+      if (!mode) {
+        throw createError('mode is required', 400);
+      }
+
+      if (mode === 'session') {
+        if (!targetSessionId) throw createError('sessionId is required', 400);
+        const targetSession = getStoredSession(targetSessionId);
+        if (!targetSession) throw createError(`Unknown session: ${targetSessionId}`, 404);
+        const targetUser = findUserByUsername(users, targetSession.username);
+        if (targetUser && !canManageTargetUser(authState, targetUser, users)) {
+          throw createError(`You cannot manage ${targetSession.username}`, 403);
+        }
+        if (!targetUser && authState?.role !== 'owner') {
+          throw createError('Only owners can manage sessions for deleted or unknown users', 403);
+        }
+        if (targetSession.sessionId === authState?.sessionId && !confirmSelf) {
+          throw createError('Refusing to revoke the current session without confirmSelf=true', 400);
+        }
+        const revoked = revokeSessionRecord(targetSession.sessionId, 'forced_revocation', { revokedBy: actor });
+        if (!revoked) throw createError(`Unknown session: ${targetSessionId}`, 404);
+        await recordAuthAudit('session_revoked', {
+          actor,
+          username: revoked.username,
+          sessionId: revoked.sessionId,
+          reason: 'forced_revocation',
+          revokeMode: 'session',
+        });
+        sendJson(res, 200, {
+          ok: true,
+          revoked: [toPublicSession(revoked.sessionId, revoked, authState?.sessionId || '')],
+        });
+        return;
+      }
+
+      if (mode === 'user') {
+        if (!username) throw createError('username is required', 400);
+        const targetUser = findUserByUsername(users, username);
+        if (!targetUser) throw createError(`Unknown user: ${username}`, 404);
+        if (!canManageTargetUser(authState, targetUser, users)) {
+          throw createError(`You cannot manage ${username}`, 403);
+        }
+        const shouldRevokeCurrent = includeCurrent && username === authState?.username;
+        if (shouldRevokeCurrent && !confirmSelf) {
+          throw createError('Refusing to revoke the current session without confirmSelf=true', 400);
+        }
+        const revoked = revokeSessionsByFilter((session) => {
+          if (session.username !== username) return false;
+          if (!includeCurrent && session.sessionId === authState?.sessionId) return false;
+          return true;
+        }, 'forced_revocation', { revokedBy: actor });
+        if (!revoked.length) {
+          throw createError(includeCurrent ? `No sessions found for ${username}` : `No revocable sessions found for ${username}`, 404);
+        }
+        await recordAuthAudit('session_revoked', {
+          actor,
+          username,
+          reason: 'forced_revocation',
+          revokeMode: 'user',
+          revokedCount: revoked.length,
+          includeCurrent,
+        });
+        sendJson(res, 200, {
+          ok: true,
+          revoked: revoked.map((session) => toPublicSession(session.sessionId, session, authState?.sessionId || '')),
+        });
+        return;
+      }
+
+      if (mode === 'others') {
+        const revoked = revokeSessionsByFilter((session) => {
+          if (session.sessionId === authState?.sessionId) return false;
+          const targetUser = findUserByUsername(users, session.username);
+          if (!targetUser) return authState?.role === 'owner';
+          return canManageTargetUser(authState, targetUser, users);
+        }, 'forced_revocation', { revokedBy: actor });
+        await recordAuthAudit('session_revoked', {
+          actor,
+          reason: 'forced_revocation',
+          revokeMode: 'others',
+          revokedCount: revoked.length,
+        });
+        sendJson(res, 200, {
+          ok: true,
+          revoked: revoked.map((session) => toPublicSession(session.sessionId, session, authState?.sessionId || '')),
+        });
+        return;
+      }
+
+      throw createError(`Unsupported revoke mode: ${mode}`, 400);
     } catch (error) {
       sendJson(res, error.statusCode || 500, {
         error: error.message,
