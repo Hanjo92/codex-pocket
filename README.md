@@ -283,13 +283,17 @@ npm run doctor -- <account-name>
 ### Shared/internal deployment hardening knobs
 
 ```bash
+export CODEX_POCKET_HOST=127.0.0.1
 export CODEX_POCKET_ALLOWED_ORIGINS="https://codex-pocket.example.com,https://pocket.internal"
 export CODEX_POCKET_FORCE_SECURE_COOKIES=true
+export CODEX_POCKET_SESSION_TTL_SECONDS=$((60 * 60 * 24 * 7))
 ```
 
+- `CODEX_POCKET_HOST=127.0.0.1` keeps the Node server local-only unless you intentionally choose broader reachability
 - `CODEX_POCKET_ALLOWED_ORIGINS` limits cookie-authenticated `POST` requests to specific browser origins
 - `CODEX_POCKET_FORCE_SECURE_COOKIES=true` forces the session cookie to stay `Secure` behind HTTPS reverse proxies even if proxy headers are incomplete
-- see `docs/deployment-hardening.md` for the fuller checklist and reverse-proxy notes
+- shorter `CODEX_POCKET_SESSION_TTL_SECONDS` values can be useful for shared internal setups
+- see `docs/deployment-hardening.md` for the fuller checklist, safety-envelope guidance, and reverse-proxy notes
 
 `doctor` checks things like:
 - `CODEX_HOME` presence
@@ -351,7 +355,7 @@ For deeper notes:
 - read-side transcript rendering still depends on rollout/state parsing, not a fully semantic Codex thread model
 - Enter / Esc / Ctrl+C only work when Codex exposes a live terminal stdin target for that thread
 - mobile-friendly does **not** yet mean polished native-app quality
-- auth/access control is still not hardened for direct public internet exposure
+- auth/access control is intentionally aimed at trusted internal sharing, not hardened direct public internet exposure
 
 ---
 
@@ -359,6 +363,7 @@ For deeper notes:
 
 - prefer `localhost`, LAN, VPN, Tailscale, or another trusted private route
 - do **not** expose this prototype directly to the public internet without stronger auth, TLS, and operational hardening
+- the current security model is meant for trusted internal sharing, not fuller delegated-access collaboration
 - keep the Codex app-server bound locally when possible
 - create at least one local browser login user before opening access beyond localhost
 - browser login users are created locally on the Codex host via CLI; they are not self-service from the web UI
@@ -367,7 +372,7 @@ For deeper notes:
 - optional `CODEX_POCKET_ALLOWED_ORIGINS` lets you narrow which browser origins may issue authenticated `POST` actions
 - optional `CODEX_POCKET_FORCE_SECURE_COOKIES=true` is useful behind HTTPS reverse proxies that do not reliably forward `X-Forwarded-Proto`
 - anyone who can reach the web UI and satisfy auth may still inspect allowed transcripts and actions inside their granted scope, so treat network exposure carefully
-- for a safer internal-exposure checklist, see `docs/deployment-hardening.md`
+- for a safer internal-exposure checklist, clearer proxy guidance, and a "when this is / is not enough" breakdown, see `docs/deployment-hardening.md`
 
 ---
 
