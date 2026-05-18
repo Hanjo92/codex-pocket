@@ -500,6 +500,16 @@
         gap: 8px;
         padding: 0 8px 8px;
       }
+      .project-rollup-summary {
+        display: grid;
+        gap: 6px;
+        padding: 0 4px 4px;
+      }
+      .project-rollup-meta {
+        font-size: 11px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
       .thread-item-shell {
         position: relative;
       }
@@ -1734,6 +1744,14 @@
           threadSortTitleAsc: 'Title',
           threadSortProjectAsc: 'Project',
           threadSortAttention: 'Attention priority',
+          projectRollupUpdated: 'updated {time}',
+          projectRollupQuiet: 'Quiet',
+          projectRollupRunning: 'Running',
+          projectRollupFailed: 'Failed',
+          projectRollupApproval: 'Waiting approval',
+          projectRollupInput: 'Waiting input',
+          projectRollupUnread: 'Unread',
+          projectRollupChanged: 'Changed',
           refreshList: 'Refresh list',
           loadingSession: 'Loading session…',
           refreshCurrentThread: 'Refresh current thread',
@@ -2003,6 +2021,14 @@
           threadSortTitleAsc: '제목 가나다순',
           threadSortProjectAsc: '경로순',
           threadSortAttention: 'attention 우선순위',
+          projectRollupUpdated: '{time} 업데이트',
+          projectRollupQuiet: '조용함',
+          projectRollupRunning: '실행 중',
+          projectRollupFailed: '실패',
+          projectRollupApproval: '승인 대기',
+          projectRollupInput: '입력 대기',
+          projectRollupUnread: '안 읽음',
+          projectRollupChanged: '변경',
           refreshList: '목록 새로고침',
           loadingSession: '세션 불러오는 중…',
           refreshCurrentThread: '현재 스레드 새로고침',
@@ -3310,20 +3336,85 @@
         const map = new Map();
         for (const thread of threads) {
           const name = getProjectName(thread);
-          const current = map.get(name) || { name, count: 0, updatedAtMs: 0, unreadCount: 0, attentionCount: 0 };
+          const current = map.get(name) || {
+            name,
+            count: 0,
+            updatedAtMs: 0,
+            unreadCount: 0,
+            attentionCount: 0,
+            changedCount: 0,
+            runningCount: 0,
+            failedCount: 0,
+            approvalCount: 0,
+            inputCount: 0,
+            completedCount: 0,
+            unknownCount: 0,
+          };
           const updatedAtMs = thread.updatedAtMs || 0;
           current.count += 1;
           current.updatedAtMs = Math.max(current.updatedAtMs, updatedAtMs);
           const viewedAt = Number(projectViewedAt[name] || 0);
-          if (updatedAtMs > viewedAt) {
+          const unread = updatedAtMs > viewedAt;
+          if (unread) {
             current.unreadCount += 1;
+          }
+          if (isThreadNew(thread)) {
+            current.changedCount += 1;
           }
           if (isAttentionThread(thread)) {
             current.attentionCount += 1;
           }
+          switch (thread.state) {
+            case 'failed':
+              current.failedCount += 1;
+              break;
+            case 'waiting_approval':
+              current.approvalCount += 1;
+              break;
+            case 'waiting_input':
+              current.inputCount += 1;
+              break;
+            case 'running':
+              current.runningCount += 1;
+              break;
+            case 'completed':
+              current.completedCount += 1;
+              break;
+            case 'unknown':
+            default:
+              current.unknownCount += 1;
+              break;
+          }
           map.set(name, current);
         }
         return [...map.values()];
+      }
+
+      function getProjectRollupChips(project = {}) {
+        const chips = [
+          project.failedCount ? `<span class="chip">${escapeHtml(t('projectRollupFailed'))}: ${project.failedCount}</span>` : '',
+          project.approvalCount ? `<span class="chip">${escapeHtml(t('projectRollupApproval'))}: ${project.approvalCount}</span>` : '',
+          project.inputCount ? `<span class="chip">${escapeHtml(t('projectRollupInput'))}: ${project.inputCount}</span>` : '',
+          project.runningCount ? `<span class="chip">${escapeHtml(t('projectRollupRunning'))}: ${project.runningCount}</span>` : '',
+          project.unreadCount ? `<span class="chip">${escapeHtml(t('projectRollupUnread'))}: ${project.unreadCount}</span>` : '',
+          project.changedCount ? `<span class="chip">${escapeHtml(t('projectRollupChanged'))}: ${project.changedCount}</span>` : '',
+        ].filter(Boolean);
+        if (!chips.length) {
+          chips.push(`<span class="chip">${escapeHtml(t('projectRollupQuiet'))}</span>`);
+        }
+        return chips.join('');
+      }
+
+      function getProjectRollupTitle(project = {}) {
+        return [
+          `${project.count || 0} ${t('item')}${(project.count || 0) === 1 ? '' : 's'}`,
+          project.failedCount ? `${t('projectRollupFailed')}: ${project.failedCount}` : '',
+          project.approvalCount ? `${t('projectRollupApproval')}: ${project.approvalCount}` : '',
+          project.inputCount ? `${t('projectRollupInput')}: ${project.inputCount}` : '',
+          project.runningCount ? `${t('projectRollupRunning')}: ${project.runningCount}` : '',
+          project.unreadCount ? `${t('projectRollupUnread')}: ${project.unreadCount}` : '',
+          project.changedCount ? `${t('projectRollupChanged')}: ${project.changedCount}` : '',
+        ].filter(Boolean).join(' · ');
       }
 
       function isThreadNew(thread = {}) {
@@ -3542,14 +3633,21 @@
           localStorage.removeItem('codex-pocket:project-filter');
         }
 
-        const chips = [{ value: '', label: t('allProjects'), unreadCount: 0, attentionCount: stats.reduce((sum, project) => sum + (project.attentionCount || 0), 0) }]
-          .concat(sortedProjects.map((project) => ({ value: project.name, label: `${project.name} · ${project.count}`, unreadCount: project.unreadCount, attentionCount: project.attentionCount || 0 })));
+        const chips = [{ value: '', label: t('allProjects'), unreadCount: 0, attentionCount: stats.reduce((sum, project) => sum + (project.attentionCount || 0), 0), title: '' }]
+          .concat(sortedProjects.map((project) => ({
+            value: project.name,
+            label: `${project.name} · ${project.count}`,
+            unreadCount: project.unreadCount,
+            attentionCount: project.attentionCount || 0,
+            title: getProjectRollupTitle(project),
+          })));
 
         projectFilterEl.innerHTML = chips.map((chip) => `
           <button
             type="button"
             class="project-chip ${chip.value === projectFilter ? 'active' : ''}"
             data-project-filter="${escapeHtml(chip.value)}"
+            title="${escapeHtml(chip.title || chip.label)}"
           >
             <span>${escapeHtml(chip.label)}</span>
             ${chip.attentionCount ? `<span class="project-chip-attention actionable" data-project-inbox="${escapeHtml(chip.value)}" title="${escapeHtml(t('openProjectInbox'))}">${chip.attentionCount}</span>` : ''}
@@ -4453,7 +4551,13 @@
           .sort((a, b) => (b.attentionCount || 0) - (a.attentionCount || 0) || (b.unreadCount || 0) - (a.unreadCount || 0) || (b.updatedAtMs || 0) - (a.updatedAtMs || 0))
           .map((project) => ({
             ...project,
-            items: threads.filter((thread) => getProjectName(thread) === project.name),
+            items: threads
+              .filter((thread) => getProjectName(thread) === project.name)
+              .sort((a, b) => {
+                const priorityDiff = getAttentionPriority(a) - getAttentionPriority(b);
+                if (priorityDiff) return priorityDiff;
+                return compareThreads(a, b);
+              }),
           }))
           .filter((group) => group.items.length);
 
@@ -4462,9 +4566,13 @@
             <summary class="thread-section-head">
               <div class="thread-section-title">${escapeHtml(group.name)}</div>
               <div class="thread-section-count">${escapeHtml(String(group.items.length))}</div>
-              <div class="thread-section-toggle">${group.attentionCount ? `⚠ ${escapeHtml(String(group.attentionCount))}` : group.unreadCount ? `${escapeHtml(String(group.unreadCount))} ${escapeHtml(t('newBadge'))}` : ''}</div>
+              <div class="thread-section-toggle">${group.attentionCount ? `⚠ ${escapeHtml(String(group.attentionCount))}` : group.unreadCount ? `${escapeHtml(String(group.unreadCount))} ${escapeHtml(t('newBadge'))}` : escapeHtml(t('projectRollupQuiet'))}</div>
             </summary>
             <div class="thread-section-body">
+              <div class="project-rollup-summary">
+                <div class="thread-summary">${getProjectRollupChips(group)}</div>
+                <div class="project-rollup-meta">${escapeHtml(t('projectRollupUpdated', { time: formatDateTime(group.updatedAtMs) }))}</div>
+              </div>
               ${group.items.map((thread, index) => renderThreadItem(thread, index)).join('')}
             </div>
           </details>
